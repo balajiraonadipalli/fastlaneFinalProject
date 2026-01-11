@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastLane Emergency System - UML Diagrams</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2E86AB;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 30px;
+            justify-content: center;
+        }
+        
+        .nav-btn {
+            background: #2E86AB;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .nav-btn:hover {
+            background: #1a5a7a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .nav-btn.active {
+            background: #A23B72;
+        }
+        
+        .diagram-section {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+        
+        .diagram-section.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .diagram-title {
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #2E86AB;
+            font-size: 1.8em;
+        }
+        
+        .diagram-container {
+            text-align: center;
+            padding: 20px;
+            background: #fafafa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .diagram-img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .code-section {
+            margin-top: 20px;
+        }
+        
+        .code-title {
+            background: #333;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px 5px 0 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .code-block {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 20px;
+            border-radius: 0 0 5px 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .copy-btn {
+            float: right;
+            background: #06A77D;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .copy-btn:hover {
+            background: #048a63;
+        }
+        
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+        
+        .instructions h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+        
+        .instructions ul {
+            margin-left: 20px;
+            color: #856404;
+        }
+        
+        .instructions a {
+            color: #2E86AB;
+            font-weight: bold;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚑 FastLane Emergency System</h1>
+        <p class="subtitle">UML Diagrams - Complete Documentation</p>
+        
+        <div class="instructions">
+            <h3>📌 How to Use:</h3>
+            <ul>
+                <li>Click on any diagram button below to view it</li>
+                <li>Copy the PlantUML code using the "Copy Code" button</li>
+                <li>Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank">PlantUML Online Editor</a></li>
+                <li>Download the diagram as PNG, SVG, or PDF</li>
+            </ul>
+        </div>
+        
+        <div class="nav-buttons">
+            <button class="nav-btn active" onclick="showDiagram('architecture')">Architecture Design</button>
+            <button class="nav-btn" onclick="showDiagram('component')">Component Diagram</button>
+            <button class="nav-btn" onclick="showDiagram('usecase')">Use Case Diagram</button>
+            <button class="nav-btn" onclick="showDiagram('database')">Database ER Diagram</button>
+            <button class="nav-btn" onclick="showDiagram('activity-nav')">Activity: Navigation</button>
+            <button class="nav-btn" onclick="showDiagram('activity-police')">Activity: Police</button>
+            <button class="nav-btn" onclick="showDiagram('activity-location')">Activity: Location</button>
+            <button class="nav-btn" onclick="showDiagram('sequence-alert')">Sequence: Alert</button>
+            <button class="nav-btn" onclick="showDiagram('sequence-auth')">Sequence: Auth</button>
+            <button class="nav-btn" onclick="showDiagram('class')">Class Diagram</button>
+            <button class="nav-btn" onclick="showDiagram('state')">State Diagram</button>
+            <button class="nav-btn" onclick="showDiagram('deployment')">Deployment</button>
+        </div>
+        
+        <!-- Architecture Diagram -->
+        <div id="architecture" class="diagram-section active">
+            <h2 class="diagram-title">3.4.1 Architectural Design</h2>
+            <div class="diagram-container">
+                <p style="color: #666; margin-bottom: 10px;">System Architecture - 3-Tier Design</p>
+                <img src="http://www.plantuml.com/plantuml/png/bLLDRzim33rFNp5mPAd2GYHa8Iy5gC4gj5RKgcCZKYzAYeesLPY_VjssB3Lf8iI4gNkPdxpPMXc-wX5GdSPEJWZgDz7LRZY4KGY0EhSQhiuQ7s8mH8KYvSfFBQQ7cGO7v7S1JWZvO4GQPvLPLOI3LbMUXDLNL4Njp2Pz1q0GZXQfG0q17G6GWGOG1kGXm0L2WaG1sOG1tOG1u0H1vGG1w" alt="Architecture Diagram" class="diagram-img">
+            </div>
+            <div class="code-section">
+                <div class="code-title">
+                    PlantUML Code
+                    <button class="copy-btn" onclick="copyCode('arch-code')">Copy Code</button>
+                </div>
+                <pre class="code-block" id="arch-code">@startuml Architecture_Design
+!theme plain
+title FastLane Emergency System - Architectural Design
+
+package "Client Layer" {
+    [Ambulance Mobile App\n(React Native)] as AmbulanceApp
+    [Police Mobile App\n(React Native)] as PoliceApp
+    [Toll Gate Dashboard\n(React Native)] as TollApp
+}
+
+package "Application Layer" {
+    package "Node.js + Express Server" {
+        [Auth Routes] as AuthRoutes
+        [Police Routes] as PoliceRoutes
+        [Toll Routes] as TollRoutes
+        
+        package "Socket.IO\n(Real-time Engine)" {
+            [Location Tracking]
+            [Alert Broadcasting]
+            [Traffic Updates]
+        }
+    }
+}
+
+package "Data Layer" {
+    database "MongoDB" {
+        [Users Collection]
+        [Alerts Collection]
+        [Sessions Collection]
+    }
+}
+
+AmbulanceApp -down-> AuthRoutes : HTTPS/REST
+PoliceApp -down-> AuthRoutes : HTTPS/REST
+TollApp -down-> AuthRoutes : HTTPS/REST
+
+AmbulanceApp -down-> [Alert Broadcasting] : WebSocket
+PoliceApp -down-> [Alert Broadcasting] : WebSocket
+
+AuthRoutes -down-> [Users Collection] : Mongoose ODM
+PoliceRoutes -down-> [Alerts Collection]
+@enduml</pre>
+            </div>
+        </div>
+        
+        <!-- Placeholder message for other diagrams -->
+        <div id="component" class="diagram-section">
+            <h2 class="diagram-title">3.4.2 Module-Wise Design - Component Diagram</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Component_Diagram</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="usecase" class="diagram-section">
+            <h2 class="diagram-title">3.4.3 Use Case Diagram</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>UseCase_Diagram</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="database" class="diagram-section">
+            <h2 class="diagram-title">3.4.4 Database Design - ER Diagram</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Database_ER_Diagram</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="activity-nav" class="diagram-section">
+            <h2 class="diagram-title">3.4.5 Algorithm - Ambulance Navigation</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Activity_Ambulance_Navigation</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="activity-police" class="diagram-section">
+            <h2 class="diagram-title">3.4.5 Algorithm - Police Response</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Activity_Police_Response</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="activity-location" class="diagram-section">
+            <h2 class="diagram-title">3.4.5 Algorithm - Location Tracking</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Activity_Location_Tracking</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="sequence-alert" class="diagram-section">
+            <h2 class="diagram-title">Sequence Diagram - Alert Flow</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Sequence_Alert_Flow</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="sequence-auth" class="diagram-section">
+            <h2 class="diagram-title">Sequence Diagram - Authentication</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Sequence_Authentication</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="class" class="diagram-section">
+            <h2 class="diagram-title">Class Diagram - Core Models</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Class_Diagram</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="state" class="diagram-section">
+            <h2 class="diagram-title">State Diagram - Alert Lifecycle</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>State_Diagram_Alert</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <div id="deployment" class="diagram-section">
+            <h2 class="diagram-title">Deployment Diagram</h2>
+            <div class="diagram-container">
+                <p style="padding: 40px; color: #666;">
+                    Open <strong>PlantUML_Diagrams.puml</strong> file and copy the <strong>Deployment_Diagram</strong> section.<br><br>
+                    Paste it into <a href="https://www.plantuml.com/plantuml/uml/" target="_blank" style="color: #2E86AB;">PlantUML Online Editor</a> to view and export.
+                </p>
+            </div>
+        </div>
+        
+        <footer>
+            <p>FastLane Emergency System - UML Documentation</p>
+            <p>Generated using PlantUML | <a href="https://plantuml.com" target="_blank">Learn More</a></p>
+        </footer>
+    </div>
+    
+    <script>
+        function showDiagram(diagramId) {
+            // Hide all diagrams
+            document.querySelectorAll('.diagram-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected diagram
+            document.getElementById(diagramId).classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+        }
+        
+        function copyCode(elementId) {
+            const codeElement = document.getElementById(elementId);
+            const textArea = document.createElement('textarea');
+            textArea.value = codeElement.textContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            // Show feedback
+            event.target.textContent = 'Copied ✓';
+            setTimeout(() => {
+                event.target.textContent = 'Copy Code';
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
+
+
+

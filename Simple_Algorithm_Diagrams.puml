@@ -1,0 +1,194 @@
+@startuml Algorithm_Navigation
+!theme plain
+title Algorithm 1: Ambulance Navigation System
+
+start
+
+:User Login;
+:Enter Destination;
+:Get Current GPS Location;
+
+:Calculate Route;
+
+:Start Navigation;
+
+repeat
+    :Update Current Location;
+    
+    if (Near Toll/Police?) then (yes)
+        :Send Alert;
+    else (no)
+    endif
+    
+repeat while (Reached Destination?) is (no)
+->yes;
+
+:Stop Navigation;
+
+stop
+
+@enduml
+
+@startuml Algorithm_Police_Response
+!theme plain
+title Algorithm 2: Police Alert Response System
+
+start
+
+:Police Login;
+:Open Dashboard;
+
+repeat
+    :Wait for Alert;
+    
+    if (New Alert Received?) then (yes)
+        :Display Alert;
+        :Show Route & Details;
+        
+        if (Officer Responds?) then (yes)
+            :Select Traffic Status;
+            :Enter Message;
+            :Send Response;
+            :Update Alert Status;
+        else (no)
+        endif
+    else (no)
+    endif
+    
+repeat while (Continue Monitoring?) is (yes)
+->no;
+
+:Logout;
+
+stop
+
+@enduml
+
+@startuml Algorithm_Location_Tracking
+!theme plain
+title Algorithm 3: Real-time Location Tracking
+
+start
+
+:Connect to Server;
+:Join Ambulance Room;
+
+repeat
+    :Get GPS Coordinates;
+    
+    if (Valid GPS Data?) then (yes)
+        :Send to Server;
+        :Broadcast Location;
+    else (no)
+        :Skip Update;
+    endif
+    
+    :Wait 3 Seconds;
+    
+repeat while (Navigation Active?) is (yes)
+->no;
+
+:Disconnect from Server;
+
+stop
+
+@enduml
+
+@startuml Algorithm_Alert_Processing
+!theme plain
+title Algorithm 4: Alert Processing System
+
+start
+
+:Ambulance Sends Alert;
+
+:Server Receives Alert;
+
+fork
+    :Store in Database;
+fork again
+    :Send to Police/Toll;
+end fork
+
+:Wait for Response;
+
+if (Response Received?) then (yes)
+    :Forward to Ambulance;
+    :Display Notification;
+else (no - timeout)
+    :Show "No Response";
+endif
+
+:Update Alert Status;
+
+stop
+
+@enduml
+
+@startuml Algorithm_User_Authentication
+!theme plain
+title Algorithm 5: User Authentication
+
+start
+
+:User Opens App;
+
+if (Has Token?) then (yes)
+    :Validate Token;
+    if (Valid?) then (yes)
+        :Go to Dashboard;
+        stop
+    else (no)
+    endif
+endif
+
+:Show Login Screen;
+:Enter Email & Password;
+
+:Send to Server;
+
+:Check Credentials;
+
+if (Valid User?) then (yes)
+    :Generate Token;
+    :Save Token;
+    :Go to Dashboard;
+else (no)
+    :Show Error;
+    :Return to Login;
+    stop
+endif
+
+stop
+
+@enduml
+
+@startuml Algorithm_Distance_Calculation
+!theme plain
+title Algorithm 6: Distance Calculation & Alert Trigger
+
+start
+
+:Get Ambulance Location;
+:Get All Toll/Police Locations;
+
+repeat
+    :Select Next Facility;
+    :Calculate Distance;
+    
+    if (Distance < Threshold?) then (yes)
+        :Create Alert;
+        :Send Alert;
+        :Mark as Notified;
+    else (no)
+    endif
+    
+repeat while (More Facilities?) is (yes)
+->no;
+
+stop
+
+@enduml
+
+
+

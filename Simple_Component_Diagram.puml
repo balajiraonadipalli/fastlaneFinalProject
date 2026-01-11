@@ -1,0 +1,42 @@
+@startuml
+!theme plain
+title FastLane Emergency System - Component Diagram
+
+package "Mobile Application (React Native)" {
+    [Authentication\nModule] as Auth
+    [Ambulance\nNavigation] as Ambulance
+    [Police\nDashboard] as Police
+}
+
+package "Backend Server (Node.js)" {
+    [Auth\nRoutes] as AuthAPI
+    [Toll Alert\nRoutes] as TollAPI
+    [Police Alert\nRoutes] as PoliceAPI
+    [Real-time\nEngine\n(Socket.IO)] as Socket
+}
+
+database "MongoDB" {
+    [User\nData] as UserDB
+}
+
+cloud "External Services" {
+    [Google Maps\nAPI] as Maps
+}
+
+' Connections
+Auth --> AuthAPI : Login/Register
+Ambulance --> TollAPI : Send Alerts
+Ambulance --> PoliceAPI : Send Alerts
+Ambulance --> Socket : Location Updates
+Police --> PoliceAPI : Get Alerts
+Police --> Socket : Send Response
+
+AuthAPI --> UserDB : Store/Retrieve
+Ambulance --> Maps : Route Calculation
+Socket ..> Police : Real-time Alerts
+Socket ..> Ambulance : Traffic Updates
+
+@enduml
+
+
+

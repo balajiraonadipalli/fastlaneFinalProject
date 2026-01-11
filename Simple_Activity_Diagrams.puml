@@ -1,0 +1,77 @@
+@startuml Simple_Navigation
+!theme plain
+title Activity Diagram - Ambulance Navigation
+
+start
+:Login;
+:Set Destination;
+:Start Navigation;
+
+repeat
+    :Get GPS Location;
+    :Update Map;
+    
+    if (Near Toll/Police?) then (yes)
+        :Send Alert;
+        :Receive Response;
+    endif
+    
+repeat while (Reached Destination?) is (no)
+->yes;
+
+:Stop Navigation;
+stop
+@enduml
+
+@startuml Simple_Police_Response
+!theme plain
+title Activity Diagram - Police Response
+
+start
+:Login to Dashboard;
+
+repeat
+    :Wait for Alerts;
+    
+    if (New Alert?) then (yes)
+        :View Alert Details;
+        :Review Route & Location;
+        
+        if (Send Response?) then (yes)
+            :Select Traffic Status;
+            :Send to Ambulance;
+        endif
+    endif
+    
+repeat while (Active?) is (yes)
+->no;
+
+stop
+@enduml
+
+@startuml Simple_Location_Tracking
+!theme plain
+title Activity Diagram - Location Tracking
+
+start
+:Connect to Server;
+
+repeat
+    :Get GPS Data;
+    
+    if (Valid?) then (yes)
+        :Send to Server;
+        :Broadcast Location;
+    endif
+    
+    :Wait 3 seconds;
+    
+repeat while (Connected?) is (yes)
+->no;
+
+:Disconnect;
+stop
+@enduml
+
+
+

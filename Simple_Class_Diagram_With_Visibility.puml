@@ -1,0 +1,285 @@
+@startuml Simple_Class_Diagram
+!theme plain
+title Class Diagram - FastLane System (With Visibility Modifiers)
+
+' Legend for visibility
+legend right
+  **Visibility Symbols:**
+  - **+** Public (accessible everywhere)
+  - **-** Private (only within class)
+  # **Protected (subclasses only)
+  ~ **Package/Internal
+endlegend
+
+class User {
+  ' Private Attributes
+  - _id: ObjectId
+  - name: String
+  - email: String
+  - password: String
+  - role: enum
+  - badgeNumber: String
+  - licenseNumber: String
+  - createdAt: Date
+  - updatedAt: Date
+  
+  ' Public Methods
+  + register(): User
+  + login(): Token
+  + validatePassword(): Boolean
+  + updateLocation(): void
+  + getProfile(): Object
+  
+  ' Protected Methods
+  # encryptPassword(): String
+}
+
+class Alert {
+  ' Private Attributes
+  - id: Integer
+  - userId: ObjectId
+  - driverName: String
+  - location: Object
+  - distance: Number
+  - status: enum
+  - timestamp: Date
+  
+  ' Public Methods
+  + create(): Alert
+  + send(): Boolean
+  + updateStatus(): void
+  + getDetails(): Object
+  
+  ' Protected Methods
+  # validateAlert(): Boolean
+}
+
+class PoliceAlert {
+  ' Private Attributes
+  - policeId: String
+  - area: String
+  - route: String
+  
+  ' Public Methods
+  + sendToPolice(): void
+  + receiveResponse(): void
+}
+
+class TollAlert {
+  ' Private Attributes
+  - tollId: String
+  - tollName: String
+  - highway: String
+  
+  ' Public Methods
+  + sendToToll(): void
+  + getTrafficStatus(): String
+}
+
+class SocketService {
+  ' Private Attributes
+  - io: SocketIO
+  - connections: Map
+  
+  ' Public Methods
+  + connect(): void
+  + broadcast(): void
+  + disconnect(): void
+}
+
+' Relationships
+User "1" --> "*" Alert : creates
+Alert <|-- PoliceAlert : extends
+Alert <|-- TollAlert : extends
+Alert --> SocketService : uses
+
+@enduml
+
+@startuml Visibility_Examples
+!theme plain
+title Understanding Visibility Modifiers
+
+class ExampleClass {
+  ==Private (-)==
+  - privateAttribute: String
+  - _internalData: Object
+  .. Can only be accessed within this class ..
+  
+  ==Protected (#)==
+  # protectedMethod(): void
+  # validateData(): Boolean
+  .. Can be accessed by subclasses ..
+  
+  ==Public (+)==
+  + publicMethod(): void
+  + getData(): Object
+  .. Can be accessed from anywhere ..
+  
+  ==Package/Internal (~)==
+  ~ packageMethod(): void
+  .. Can be accessed within same package ..
+}
+
+note right of ExampleClass
+  **Usage:**
+  - Use **private (-)** for internal data
+  - Use **protected (#)** for inheritance
+  - Use **public (+)** for external access
+  - Use **package (~)** for module scope
+end note
+
+@enduml
+
+@startuml FastLane_Detailed_Classes
+!theme plain
+title FastLane System - Detailed Class Diagram
+
+class User {
+  ' PRIVATE attributes (-)
+  - _id: ObjectId
+  - name: String
+  - email: String
+  - password: String
+  - role: enum(police, ambulance)
+  - badgeNumber: String
+  - licenseNumber: String
+  - isActive: Boolean
+  - location: {lat, lng}
+  - createdAt: Date
+  - updatedAt: Date
+  ....
+  ' PUBLIC methods (+)
+  + register(data): User
+  + login(email, password): Token
+  + logout(): void
+  + updateLocation(lat, lng): void
+  + getProfile(): UserProfile
+  ....
+  ' PROTECTED methods (#)
+  # validatePassword(input): Boolean
+  # encryptPassword(plain): String
+  # generateToken(): String
+}
+
+class Alert {
+  ' PRIVATE attributes (-)
+  - id: Integer
+  - userId: ObjectId
+  - alertType: String
+  - driverName: String
+  - location: {lat, lng}
+  - distance: Number
+  - trafficStatus: String
+  - status: enum(pending, responded)
+  - timestamp: Date
+  ....
+  ' PUBLIC methods (+)
+  + create(data): Alert
+  + send(): Boolean
+  + updateStatus(status): void
+  + getActiveAlerts(): Alert[]
+  + broadcastToRecipients(): void
+  ....
+  ' PROTECTED methods (#)
+  # validateAlertData(): Boolean
+  # calculateDistance(): Number
+}
+
+class PoliceAlert {
+  ' PRIVATE attributes (-)
+  - policeId: String
+  - area: String
+  - route: String
+  - routeCoordinates: Array
+  - forAllPolice: Boolean
+  - policeResponse: String
+  ....
+  ' PUBLIC methods (+)
+  + sendToAllPolice(): void
+  + receiveResponse(response): void
+  + updateTrafficStatus(status): void
+  + getPoliceInArea(): Police[]
+}
+
+class TollAlert {
+  ' PRIVATE attributes (-)
+  - tollId: String
+  - tollName: String
+  - highway: String
+  - estimatedArrival: Number
+  ....
+  ' PUBLIC methods (+)
+  + sendToTollOperator(): void
+  + getTrafficStatus(): String
+  + notifyAmbulance(message): void
+  + calculateETA(): Number
+}
+
+class SocketService {
+  ' PRIVATE attributes (-)
+  - io: SocketIO
+  - ambulanceLocations: Map
+  - tollOperators: Map
+  - policeConnections: Map
+  ....
+  ' PUBLIC methods (+)
+  + handleConnection(socket): void
+  + broadcastLocation(data): void
+  + sendAlert(alert): void
+  + handleDisconnect(socketId): void
+  ....
+  ' PROTECTED methods (#)
+  # validateConnection(): Boolean
+  # cleanupDisconnected(): void
+}
+
+class AuthService {
+  ' PUBLIC methods (+)
+  + hashPassword(plain): String
+  + comparePassword(plain, hashed): Boolean
+  + generateToken(userId, role): String
+  + verifyToken(token): Object
+  ....
+  ' PRIVATE methods (-)
+  - getJWTSecret(): String
+}
+
+class MapService {
+  ' PUBLIC methods (+)
+  + calculateRoute(start, end): Route
+  + getDistance(point1, point2): Number
+  + reverseGeocode(lat, lng): Address
+  + findNearbyFacilities(location): Array
+  ....
+  ' PROTECTED methods (#)
+  # callGoogleMapsAPI(params): Response
+}
+
+' Relationships
+User "1" --> "*" Alert : creates
+Alert <|-- PoliceAlert : inherits
+Alert <|-- TollAlert : inherits
+User --> AuthService : uses
+Alert --> SocketService : broadcasts via
+Alert --> MapService : uses
+PoliceAlert --> MapService : calculates route
+TollAlert --> MapService : calculates distance
+
+note right of User
+  **Private (-):**
+  Sensitive data like password,
+  internal IDs, timestamps
+  
+  **Public (+):**
+  Methods that external
+  code can call
+  
+  **Protected (#):**
+  Methods for internal use
+  and inheritance
+end note
+
+@enduml
+
+
+

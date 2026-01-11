@@ -1,0 +1,935 @@
+@startuml Architecture_Design
+!theme plain
+title FastLane Emergency System - Architectural Design
+
+package "Client Layer" {
+    [Ambulance Mobile App\n(React Native)] as AmbulanceApp
+    [Police Mobile App\n(React Native)] as PoliceApp
+    [Toll Gate Dashboard\n(React Native)] as TollApp
+}
+
+package "Application Layer" {
+    package "Node.js + Express Server" {
+        [Auth Routes] as AuthRoutes
+        [Police Routes] as PoliceRoutes
+        [Toll Routes] as TollRoutes
+        
+        package "Socket.IO\n(Real-time Engine)" {
+            [Location Tracking]
+            [Alert Broadcasting]
+            [Traffic Updates]
+        }
+    }
+}
+
+package "Data Layer" {
+    database "MongoDB" {
+        [Users Collection]
+        [Alerts Collection]
+        [Sessions Collection]
+    }
+}
+
+package "External Services" {
+    [Google Maps API]
+    [JWT Auth Token]
+    [bcrypt Encryption]
+}
+
+AmbulanceApp -down-> AuthRoutes : HTTPS/REST
+PoliceApp -down-> AuthRoutes : HTTPS/REST
+TollApp -down-> AuthRoutes : HTTPS/REST
+
+AmbulanceApp -down-> [Alert Broadcasting] : WebSocket
+PoliceApp -down-> [Alert Broadcasting] : WebSocket
+TollApp -down-> [Alert Broadcasting] : WebSocket
+
+AuthRoutes -down-> [Users Collection] : Mongoose ODM
+PoliceRoutes -down-> [Alerts Collection]
+TollRoutes -down-> [Alerts Collection]
+
+AmbulanceApp ..> [Google Maps API] : API Calls
+[Auth Routes] ..> [JWT Auth Token]
+[Auth Routes] ..> [bcrypt Encryption]
+
+@enduml
+
+@startuml Component_Diagram
+!theme plain
+title FastLane Emergency System - Component Diagram
+
+package "Frontend Modules" {
+    
+    package "Authentication Module" {
+        [LoginScreen]
+        [RegisterScreen]
+        [HomeScreen]
+    }
+    
+    package "Ambulance Module" {
+        [MapScreen]
+        [LocationService]
+        [RouteCalculation]
+        [AlertService]
+        
+        note right of [MapScreen]
+            - Real-time location tracking
+            - Route navigation
+            - Nearby toll/police detection
+            - Alert sending
+        end note
+    }
+    
+    package "Police Module" {
+        [PoliceDashboardScreen]
+        [AlertListComponent]
+        [AlertResponseComponent]
+        
+        note right of [PoliceDashboardScreen]
+            - Receive ambulance alerts
+            - View route information
+            - Send traffic status updates
+            - Real-time notifications
+        end note
+    }
+    
+    package "Common Components" {
+        [CustomButton]
+        [CustomInput]
+        [ErrorBoundary]
+        [API Configuration]
+        [Theme Constants]
+    }
+}
+
+package "Backend Modules" {
+    
+    package "Authentication Module" as AuthMod {
+        component [User Registration Handler]
+        component [Login Validation]
+        component [JWT Token Generation]
+        component [Password Encryption]
+        component [Role-based Access Control]
+    }
+    
+    package "Toll Alert Module" {
+        component [Alert Reception Handler]
+        component [Traffic Status Simulator]
+        component [Alert Storage]
+        component [Notification Service]
+    }
+    
+    package "Police Alert Module" {
+        component [Alert Broadcasting]
+        component [Response Handler]
+        component [Alert Status Management]
+        component [Statistics Generator]
+    }
+    
+    package "Real-time Module" {
+        component [Socket.IO Server]
+        component [Location Tracking Broadcast]
+        component [Event Handlers]
+    }
+    
+    database "MongoDB" {
+        [User Model]
+    }
+}
+
+[LoginScreen] --> [Login Validation]
+[RegisterScreen] --> [User Registration Handler]
+[MapScreen] --> [Socket.IO Server]
+[MapScreen] --> [Alert Reception Handler]
+[PoliceDashboardScreen] --> [Alert Broadcasting]
+[AlertResponseComponent] --> [Response Handler]
+
+@enduml
+
+@startuml UseCase_Diagram
+!theme plain
+title FastLane Emergency System - Use Case Diagram
+
+left to right direction
+
+actor "Ambulance Driver" as Ambulance
+actor "Police Officer" as Police
+actor "Toll Gate Operator" as Toll
+
+rectangle "FastLane Emergency System" {
+    
+    package "Authentication" {
+        usecase "Register" as UC1
+        usecase "Login" as UC2
+        usecase "Logout" as UC3
+    }
+    
+    package "Navigation & Tracking" {
+        usecase "Start Navigation" as UC4
+        usecase "Track Real-time Location" as UC5
+        usecase "View Route on Map" as UC6
+        usecase "Calculate ETA" as UC7
+    }
+    
+    package "Toll Gate Alerts" {
+        usecase "Detect Nearby Toll" as UC8
+        usecase "Send Alert to Toll" as UC9
+        usecase "Receive Traffic Status" as UC10
+    }
+    
+    package "Police Alerts" {
+        usecase "Detect Nearby Police" as UC11
+        usecase "Send Route Alert" as UC12
+        usecase "Receive Traffic Update" as UC13
+    }
+    
+    package "Alert Management" {
+        usecase "View Active Alerts" as UC14
+        usecase "View Ambulance Route" as UC15
+        usecase "View Alert Details" as UC16
+    }
+    
+    package "Traffic Status Response" {
+        usecase "Send Traffic Status" as UC17
+        usecase "Clear/Free Traffic" as UC18
+        usecase "Suggest Alternate Route" as UC19
+    }
+    
+    package "Gate Control" {
+        usecase "Receive Ambulance Alert" as UC20
+        usecase "View Ambulance ETA" as UC21
+        usecase "Update Traffic Status" as UC22
+        usecase "Open Free Passage" as UC23
+    }
+}
+
+Ambulance --> UC1
+Ambulance --> UC2
+Ambulance --> UC3
+Ambulance --> UC4
+Ambulance --> UC5
+Ambulance --> UC6
+Ambulance --> UC7
+Ambulance --> UC8
+Ambulance --> UC9
+Ambulance --> UC10
+Ambulance --> UC11
+Ambulance --> UC12
+Ambulance --> UC13
+
+Police --> UC1
+Police --> UC2
+Police --> UC3
+Police --> UC14
+Police --> UC15
+Police --> UC16
+Police --> UC17
+Police --> UC18
+Police --> UC19
+
+Toll --> UC20
+Toll --> UC21
+Toll --> UC22
+Toll --> UC23
+
+UC9 ..> UC10 : <<include>>
+UC12 ..> UC13 : <<include>>
+UC17 ..> UC18 : <<extend>>
+UC17 ..> UC19 : <<extend>>
+
+@enduml
+
+@startuml Database_ER_Diagram
+!theme plain
+title FastLane Emergency System - Database Design
+
+entity "User" {
+    * _id : ObjectId <<PK>>
+    --
+    * name : String
+    * email : String <<unique>>
+    * password : String (hashed)
+    * role : enum(police, ambulance)
+    badgeNumber : String
+    licenseNumber : String
+    isActive : Boolean
+    location : Object
+      - latitude : Number
+      - longitude : Number
+    createdAt : DateTime
+    updatedAt : DateTime
+}
+
+entity "Alert (in-memory)" {
+    * id : Integer <<PK>>
+    --
+    userId : ObjectId <<FK>>
+    alertType : String
+    driverName : String
+    location : Object
+      - latitude : Number
+      - longitude : Number
+    distance : Number
+    estimatedArrival : Number
+    trafficStatus : String
+    message : String
+    status : enum(pending, responded, cleared)
+    route : Array
+    startAddress : String
+    endAddress : String
+    timestamp : DateTime
+    respondedAt : DateTime
+}
+
+entity "Toll Alert" {
+    * id : Integer <<PK>>
+    --
+    tollId : String
+    tollName : String
+    highway : String
+    ambulanceRole : String
+    driverName : String
+    distance : Number
+    estimatedArrival : Number
+    trafficStatus : String
+    message : String
+    timestamp : DateTime
+    receivedAt : DateTime
+    status : enum(active, cleared)
+}
+
+entity "Police Alert" {
+    * id : Integer <<PK>>
+    --
+    policeId : String
+    policeName : String
+    area : String
+    ambulanceRole : String
+    driverName : String
+    distance : Number
+    location : Object
+    route : String
+    routeCoordinates : Array
+    startLocation : Object
+    endLocation : Object
+    startAddress : String
+    endAddress : String
+    timestamp : DateTime
+    forAllPolice : Boolean
+    status : enum(pending, responded)
+    trafficStatus : String
+    policeResponse : String
+    policeOfficer : String
+    respondedAt : DateTime
+}
+
+User "1" --o{ "N" Alert : creates/responds
+User ||--|| "role=ambulance" : creates
+User ||--|| "role=police" : responds
+
+note right of User
+    Indexes:
+    - email (unique)
+    - role
+end note
+
+note right of Alert
+    Indexes:
+    - userId
+    - status
+    - timestamp
+end note
+
+@enduml
+
+@startuml Activity_Ambulance_Navigation
+!theme plain
+title Algorithm: Ambulance Navigation and Alert System
+
+start
+
+:User Login as Ambulance;
+
+:Set Destination;
+
+:Get Current Location (GPS);
+
+:Calculate Route using\nGoogle Maps API;
+
+:Start Navigation;
+
+repeat
+
+    :Get Current Location;
+    
+    :Update Map Position;
+    
+    :Calculate Distance to\nNearby Facilities;
+    
+    if (Is Toll Gate\nWithin 500m?) then (yes)
+        :Send Alert to Toll;
+        :Wait for Response;
+    else (no)
+    endif
+    
+    if (Is Police Station\nWithin 1km?) then (yes)
+        :Send Alert with Route;
+        :Wait for Traffic Update;
+    else (no)
+    endif
+    
+    :Update UI with\nCurrent Position;
+    
+    if (Reached Destination?) then (yes)
+        stop
+    else (no)
+    endif
+    
+repeat while (Navigation Active?)
+
+@enduml
+
+@startuml Activity_Police_Response
+!theme plain
+title Algorithm: Police Alert Response System
+
+start
+
+:Police User Login;
+
+:Open Dashboard;
+
+:Connect to WebSocket;
+
+repeat
+
+    :Listen for New Alerts;
+    
+    if (New Alert Received?) then (yes)
+        
+        :Display Alert Notification;
+        
+        :Show Alert Details:
+        - Driver Name
+        - Distance
+        - Route on Map
+        - Start/End Address;
+        
+        :Police Officer\nReviews Situation;
+        
+        if (Send Response?) then (yes)
+            
+            :Select Traffic Status:
+            - Clear/Free
+            - Congested
+            - Heavy Traffic;
+            
+            :Enter Message (optional);
+            
+            :Send Response to Backend;
+            
+            :Broadcast to Ambulance\nvia WebSocket;
+            
+            :Update Alert Status\n(pending → responded);
+            
+            :Remove from Active List;
+            
+        else (no - dismiss)
+        endif
+        
+    else (no)
+        :Wait for alerts...;
+    endif
+    
+repeat while (Dashboard Active?)
+
+stop
+
+@enduml
+
+@startuml Activity_Location_Tracking
+!theme plain
+title Algorithm: Real-time Location Tracking
+
+start
+
+:Initialize Socket.IO Connection;
+
+:Emit 'ambulance:connect' Event
+with {driverName, role};
+
+:Join 'ambulances' Room;
+
+repeat
+
+    :Get GPS Coordinates:
+    - Latitude
+    - Longitude
+    - Speed
+    - Heading;
+    
+    :Validate Coordinates;
+    
+    if (Valid GPS Data?) then (yes)
+        
+        :Emit 'ambulance:location'\nto Server;
+        
+        :Server Updates Map;
+        
+        :Server Stores in Memory\nambulanceLocations.set();
+        
+        :Broadcast to Toll Operators\nvia 'toll-operators' room;
+        
+    else (no)
+        :Skip Update;
+    endif
+    
+    :Wait 2-3 seconds;
+    
+repeat while (Connection Active?)
+
+:On Disconnect;
+
+:Remove from\nambulanceLocations;
+
+stop
+
+@enduml
+
+@startuml Sequence_Alert_Flow
+!theme plain
+title Sequence Diagram: Ambulance Alert Flow
+
+actor "Ambulance Driver" as Driver
+participant "Mobile App" as App
+participant "GPS Service" as GPS
+participant "Backend Server" as Server
+participant "Socket.IO" as Socket
+participant "Toll Operator" as Toll
+participant "Police Officer" as Police
+
+Driver -> App: Start Navigation
+activate App
+
+App -> GPS: Request Location
+activate GPS
+GPS --> App: Return Coordinates
+deactivate GPS
+
+App -> Server: Calculate Route (Google Maps API)
+activate Server
+Server --> App: Route Data
+deactivate Server
+
+loop Every 2-3 seconds
+    App -> GPS: Get Current Location
+    GPS --> App: Coordinates
+    
+    App -> Server: Update Location (WebSocket)
+    activate Server
+    Server -> Socket: Broadcast Location
+    activate Socket
+    
+    alt Toll Gate within 500m
+        Socket --> Toll: Ambulance Alert
+        activate Toll
+        Toll -> Server: Traffic Status Update
+        Server -> Socket: Forward Status
+        Socket --> App: Traffic Status
+        deactivate Toll
+        App -> Driver: Show Notification
+    end
+    
+    alt Police Station within 1km
+        Socket --> Police: Ambulance Route Alert
+        activate Police
+        Police -> Server: Traffic Condition Response
+        Server -> Socket: Forward Response
+        Socket --> App: Police Response
+        deactivate Police
+        App -> Driver: Show Traffic Update
+    end
+    
+    deactivate Socket
+    deactivate Server
+end
+
+Driver -> App: Stop Navigation
+deactivate App
+
+@enduml
+
+@startuml Sequence_Authentication
+!theme plain
+title Sequence Diagram: User Authentication Flow
+
+actor User
+participant "Mobile App" as App
+participant "Auth Routes" as Auth
+participant "bcrypt" as Bcrypt
+participant "JWT" as JWT
+participant "MongoDB" as DB
+
+== Registration ==
+
+User -> App: Enter Registration Details
+activate App
+
+App -> Auth: POST /api/register\n{name, email, password, role}
+activate Auth
+
+Auth -> DB: Check if User Exists
+activate DB
+DB --> Auth: User Not Found
+deactivate DB
+
+Auth -> Bcrypt: Hash Password
+activate Bcrypt
+Bcrypt --> Auth: Hashed Password
+deactivate Bcrypt
+
+Auth -> DB: Save New User
+activate DB
+DB --> Auth: User Saved
+deactivate DB
+
+Auth --> App: Success Response\n{user data}
+deactivate Auth
+
+App --> User: Show Success Message
+deactivate App
+
+== Login ==
+
+User -> App: Enter Login Credentials
+activate App
+
+App -> Auth: POST /api/login\n{email, password, role}
+activate Auth
+
+Auth -> DB: Find User by Email & Role
+activate DB
+DB --> Auth: User Found
+deactivate DB
+
+Auth -> Bcrypt: Compare Password
+activate Bcrypt
+Bcrypt --> Auth: Password Match
+deactivate Bcrypt
+
+Auth -> JWT: Generate Token
+activate JWT
+JWT --> Auth: JWT Token
+deactivate JWT
+
+Auth --> App: Success Response\n{token, user data}
+deactivate Auth
+
+App -> App: Store Token Locally
+
+App --> User: Navigate to Dashboard
+deactivate App
+
+@enduml
+
+@startuml Sequence_Police_Alert_Response
+!theme plain
+title Sequence Diagram: Police Alert and Response
+
+participant "Ambulance App" as Ambulance
+participant "Backend Server" as Server
+participant "Socket.IO" as Socket
+participant "Police Dashboard" as Police
+database "Alert Storage" as Storage
+
+Ambulance -> Server: Detect Police Station (1km)
+activate Server
+
+Ambulance -> Server: POST /api/police-alert\n{location, route, distance}
+Server -> Storage: Store Alert (in-memory)
+activate Storage
+Storage --> Server: Alert ID
+deactivate Storage
+
+Server -> Socket: Emit 'police:newAlert'
+activate Socket
+
+Socket --> Police: Broadcast Alert to ALL Police Users
+activate Police
+
+Police -> Police: Display Alert Notification
+
+Police -> Police: Officer Reviews Alert\n(Route, Distance, Details)
+
+Police -> Police: Select Traffic Status &\nEnter Message
+
+Police -> Server: POST /api/police-response\n{alertId, trafficStatus, message}
+deactivate Police
+
+Server -> Storage: Update Alert Status
+activate Storage
+Storage --> Server: Updated
+deactivate Storage
+
+Server -> Socket: Emit 'police:response'
+
+Socket --> Ambulance: Forward Response
+deactivate Socket
+
+Ambulance -> Ambulance: Display Traffic Update Notification
+
+deactivate Server
+
+@enduml
+
+@startuml Class_Diagram
+!theme plain
+title Class Diagram: Core Models
+
+class User {
+    - _id: ObjectId
+    - name: String
+    - email: String
+    - password: String
+    - role: enum
+    - badgeNumber: String
+    - licenseNumber: String
+    - isActive: Boolean
+    - location: Object
+    - createdAt: Date
+    - updatedAt: Date
+    --
+    + register(): User
+    + login(): Token
+    + validatePassword(): Boolean
+    + updateLocation(): void
+}
+
+class Alert {
+    - id: Integer
+    - userId: ObjectId
+    - alertType: String
+    - driverName: String
+    - location: Object
+    - distance: Number
+    - trafficStatus: String
+    - status: enum
+    - timestamp: Date
+    --
+    + create(): Alert
+    + updateStatus(): void
+    + broadcastToRecipients(): void
+    + getActiveAlerts(): Alert[]
+}
+
+class PoliceAlert {
+    - id: Integer
+    - policeId: String
+    - area: String
+    - route: String
+    - routeCoordinates: Array
+    - forAllPolice: Boolean
+    - policeResponse: String
+    --
+    + sendToAllPolice(): void
+    + receiveResponse(): void
+    + updateTrafficStatus(): void
+}
+
+class TollAlert {
+    - id: Integer
+    - tollId: String
+    - tollName: String
+    - highway: String
+    - estimatedArrival: Number
+    --
+    + sendToTollOperator(): void
+    + getTrafficStatus(): String
+    + notifyAmbulance(): void
+}
+
+class SocketService {
+    - io: SocketIO
+    - ambulanceLocations: Map
+    - tollOperators: Map
+    --
+    + handleConnection(): void
+    + broadcastLocation(): void
+    + sendAlert(): void
+    + handleDisconnect(): void
+}
+
+class AuthService {
+    --
+    + hashPassword(): String
+    + comparePassword(): Boolean
+    + generateToken(): String
+    + verifyToken(): Object
+}
+
+class MapService {
+    --
+    + calculateRoute(): Route
+    + getDistance(): Number
+    + reverseGeocode(): Address
+    + findNearbyFacilities(): Array
+}
+
+User "1" --> "*" Alert : creates
+Alert <|-- PoliceAlert
+Alert <|-- TollAlert
+User --> AuthService : uses
+Alert --> SocketService : broadcasts via
+MapService --> Alert : calculates for
+
+@enduml
+
+@startuml State_Diagram_Alert
+!theme plain
+title State Diagram: Alert Lifecycle
+
+[*] --> Created
+
+Created --> Pending : Alert sent to recipient
+
+Pending --> Acknowledged : Recipient receives alert
+
+Acknowledged --> InReview : Officer/Operator reviews
+
+InReview --> Responded : Response sent
+InReview --> Dismissed : Alert dismissed
+
+Responded --> Cleared : Issue resolved
+Responded --> Escalated : Requires action
+
+Cleared --> [*]
+Dismissed --> [*]
+Escalated --> Responded : Action taken
+
+note right of Pending
+    Alert visible to all
+    relevant users (police/toll)
+end note
+
+note right of Responded
+    Traffic status communicated
+    back to ambulance
+end note
+
+@enduml
+
+@startuml Deployment_Diagram
+!theme plain
+title Deployment Diagram: FastLane Emergency System
+
+node "Mobile Device (Android/iOS)" {
+    component "React Native App" as MobileApp {
+        [MapScreen]
+        [PoliceDashboard]
+        [Auth Screens]
+    }
+}
+
+node "Application Server" {
+    component "Node.js Runtime" {
+        [Express.js Server]
+        [Socket.IO Server]
+        [REST API]
+    }
+}
+
+node "Database Server" {
+    database "MongoDB" {
+        [Users Collection]
+        [Alerts Collection]
+    }
+}
+
+cloud "External Services" {
+    [Google Maps API]
+    [Google Directions API]
+}
+
+MobileApp --> [Express.js Server] : HTTPS (Port 5000)
+MobileApp --> [Socket.IO Server] : WebSocket
+[Express.js Server] --> MongoDB : Mongoose ODM\n(Port 27017)
+MobileApp --> [Google Maps API] : HTTPS
+[REST API] ..> [Google Directions API] : API Calls
+
+@enduml
+
+@startuml Package_Diagram
+!theme plain
+title Package Diagram: System Organization
+
+package "Frontend (React Native)" {
+    package "screens" {
+        [HomeScreen]
+        [LoginScreen]
+        [RegisterScreen]
+        [MapScreen]
+        [PoliceDashboardScreen]
+    }
+    
+    package "components" {
+        [CustomButton]
+        [CustomInput]
+        [ErrorBoundary]
+    }
+    
+    package "services" {
+        [LocationService]
+        [ApiService]
+        [SocketService]
+    }
+    
+    package "config" {
+        [api.js]
+        [theme.js]
+    }
+}
+
+package "Backend (Node.js)" {
+    package "routes" {
+        [authRoutes]
+        [policeRoutes]
+        [tollRoutes]
+    }
+    
+    package "models" {
+        [User Model]
+    }
+    
+    package "middleware" {
+        [Authentication]
+        [Error Handler]
+    }
+    
+    [index.js]
+}
+
+package "External Libraries" {
+    [Socket.IO]
+    [Mongoose]
+    [Express]
+    [React Native Maps]
+    [bcrypt]
+    [JWT]
+}
+
+screens --> components : uses
+screens --> services : uses
+services --> [api.js] : uses
+routes --> models : uses
+routes --> middleware : uses
+[index.js] --> routes : imports
+
+Backend --> [Socket.IO] : uses
+Backend --> [Mongoose] : uses
+Backend --> [Express] : uses
+Frontend --> [React Native Maps] : uses
+
+@enduml
+
+
+

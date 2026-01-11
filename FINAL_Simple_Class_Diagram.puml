@@ -1,0 +1,230 @@
+@startuml Simple_Class_With_Visibility
+!theme plain
+title Class Diagram - FastLane System (Simplified)
+
+' Legend
+legend top right
+  **Visibility:**
+  **+** = Public
+  **-** = Private
+  **#** = Protected
+endlegend
+
+class User {
+  - _id: ObjectId
+  - name: String
+  - email: String
+  - password: String
+  - role: String
+  ____
+  + register(): User
+  + login(): Token
+  + getProfile(): Object
+  ____
+  # encryptPassword(): String
+}
+
+class Alert {
+  - id: Integer
+  - driverName: String
+  - location: Object
+  - status: String
+  - timestamp: Date
+  ____
+  + create(): Alert
+  + send(): Boolean
+  + updateStatus(): void
+  ____
+  # validateAlert(): Boolean
+}
+
+class PoliceAlert {
+  - policeId: String
+  - area: String
+  - route: String
+  ____
+  + sendToPolice(): void
+  + receiveResponse(): void
+}
+
+class TollAlert {
+  - tollId: String
+  - tollName: String
+  ____
+  + sendToToll(): void
+  + getTrafficStatus(): String
+}
+
+class SocketService {
+  - io: SocketIO
+  - connections: Map
+  ____
+  + connect(): void
+  + broadcast(): void
+  + disconnect(): void
+}
+
+User "1" --> "*" Alert : creates
+Alert <|-- PoliceAlert
+Alert <|-- TollAlert
+Alert --> SocketService : uses
+
+note bottom of User
+  **- (Private):** Sensitive data
+  **+ (Public):** External methods
+  **# (Protected):** For inheritance
+end note
+
+@enduml
+
+@startuml Visibility_Clear_Example
+!theme plain
+title Understanding Visibility Modifiers
+
+class "Example Class" as Example {
+  {field} - privateData: String
+  {field} - internalId: Integer
+  --Private attributes (only in this class)--
+  
+  {method} + publicMethod(): void
+  {method} + getData(): Object
+  --Public methods (anyone can call)--
+  
+  {method} # protectedHelper(): void
+  {method} # validate(): Boolean
+  --Protected (subclasses can use)--
+}
+
+note right of Example
+  **Symbols:**
+  **-** Private → Only this class
+  **+** Public → Everyone
+  **#** Protected → This + subclasses
+end note
+
+@enduml
+
+@startuml Complete_Simple_Diagram
+!theme plain
+title FastLane Emergency System - Class Diagram
+
+' ===== USER CLASS =====
+class User {
+  ==PRIVATE (-)==
+  - _id: ObjectId
+  - name: String
+  - email: String
+  - password: String
+  - role: enum
+  - location: Object
+  - createdAt: Date
+  
+  ==PUBLIC (+)==
+  + register(): User
+  + login(): Token
+  + logout(): void
+  + updateLocation(): void
+  + getProfile(): Object
+  
+  ==PROTECTED (#)==
+  # encryptPassword(): String
+  # validatePassword(): Boolean
+}
+
+' ===== ALERT CLASS =====
+class Alert {
+  ==PRIVATE (-)==
+  - id: Integer
+  - userId: ObjectId
+  - driverName: String
+  - location: Object
+  - distance: Number
+  - status: enum
+  - timestamp: Date
+  
+  ==PUBLIC (+)==
+  + create(): Alert
+  + send(): Boolean
+  + updateStatus(): void
+  + getDetails(): Object
+  
+  ==PROTECTED (#)==
+  # validateAlert(): Boolean
+  # calculateDistance(): Number
+}
+
+' ===== POLICE ALERT CLASS =====
+class PoliceAlert {
+  ==PRIVATE (-)==
+  - policeId: String
+  - area: String
+  - route: String
+  
+  ==PUBLIC (+)==
+  + sendToPolice(): void
+  + receiveResponse(): void
+}
+
+' ===== TOLL ALERT CLASS =====
+class TollAlert {
+  ==PRIVATE (-)==
+  - tollId: String
+  - tollName: String
+  - highway: String
+  
+  ==PUBLIC (+)==
+  + sendToToll(): void
+  + getTrafficStatus(): String
+}
+
+' ===== SOCKET SERVICE =====
+class SocketService {
+  ==PRIVATE (-)==
+  - io: SocketIO
+  - connections: Map
+  
+  ==PUBLIC (+)==
+  + connect(): void
+  + broadcast(): void
+  + disconnect(): void
+}
+
+' ===== AUTH SERVICE =====
+class AuthService {
+  ==PUBLIC (+)==
+  + hashPassword(): String
+  + comparePassword(): Boolean
+  + generateToken(): String
+  
+  ==PRIVATE (-)==
+  - getJWTSecret(): String
+}
+
+' ===== RELATIONSHIPS =====
+User "1" --> "*" Alert : creates
+Alert <|-- PoliceAlert : extends
+Alert <|-- TollAlert : extends
+Alert --> SocketService : uses
+User --> AuthService : authenticates
+
+' ===== LEGEND =====
+legend bottom right
+  **Visibility Modifiers:**
+  
+  **- (Private)**
+  Only accessible within the class itself
+  Example: password, _id
+  
+  **+ (Public)**
+  Accessible from anywhere
+  Example: login(), register()
+  
+  **# (Protected)**
+  Accessible within class and subclasses
+  Example: encryptPassword()
+endlegend
+
+@enduml
+
+
+

@@ -1,0 +1,223 @@
+@startuml Simple_Component_Diagram
+!theme plain
+title Component Diagram - FastLane System
+
+package "Mobile App" {
+    [Authentication] as Auth
+    [Ambulance Navigation] as Ambulance
+    [Police Dashboard] as Police
+}
+
+package "Backend Server" {
+    [API Routes] as API
+    [Socket.IO\nReal-time] as Socket
+}
+
+database MongoDB
+cloud "Google Maps"
+
+Auth --> API
+Ambulance --> API
+Ambulance --> Socket
+Ambulance --> "Google Maps"
+Police --> API
+Police --> Socket
+API --> MongoDB
+
+@enduml
+
+@startuml Simple_UseCase_Diagram
+!theme plain
+title Use Case Diagram
+
+actor "Ambulance\nDriver" as Ambulance
+actor "Police\nOfficer" as Police
+
+rectangle "FastLane System" {
+    usecase "Navigate\nRoute" as UC1
+    usecase "Send\nAlerts" as UC2
+    usecase "Track\nLocation" as UC3
+    usecase "Receive\nAlerts" as UC4
+    usecase "Send Traffic\nStatus" as UC5
+}
+
+Ambulance --> UC1
+Ambulance --> UC2
+Ambulance --> UC3
+Police --> UC4
+Police --> UC5
+
+UC2 ..> UC4 : <<notify>>
+
+@enduml
+
+@startuml Simple_Database_Diagram
+!theme plain
+title Database Schema
+
+entity User {
+    * _id : ObjectId
+    --
+    * name : String
+    * email : String
+    * password : String
+    * role : String
+    createdAt : DateTime
+}
+
+entity Alert {
+    * id : Integer
+    --
+    driverName : String
+    location : Object
+    distance : Number
+    status : String
+    timestamp : DateTime
+}
+
+User "1" --o "many" Alert
+
+@enduml
+
+@startuml Simple_Activity_Navigation
+!theme plain
+title Activity Diagram - Ambulance Navigation
+
+start
+:Login;
+:Set Destination;
+:Start Navigation;
+
+repeat
+    :Get GPS Location;
+    :Update Map;
+    
+    if (Near Toll/Police?) then (yes)
+        :Send Alert;
+    endif
+    
+repeat while (Reached?) is (no)
+->yes;
+
+stop
+@enduml
+
+@startuml Simple_Sequence_Alert
+!theme plain
+title Sequence Diagram - Alert Flow
+
+actor "Ambulance" as A
+participant "Backend" as B
+participant "Police" as P
+
+A -> B: Send Alert
+activate B
+B -> P: Notify Police
+activate P
+P -> B: Send Response
+deactivate P
+B -> A: Forward Response
+deactivate B
+A -> A: Show Update
+
+@enduml
+
+@startuml Simple_Architecture
+!theme plain
+title System Architecture
+
+package "Client Layer" {
+    [Mobile Apps]
+}
+
+package "Server Layer" {
+    [Express API]
+    [Socket.IO]
+}
+
+package "Data Layer" {
+    database MongoDB
+}
+
+[Mobile Apps] --> [Express API] : HTTP/REST
+[Mobile Apps] --> [Socket.IO] : WebSocket
+[Express API] --> MongoDB
+[Socket.IO] --> MongoDB
+
+@enduml
+
+@startuml Simple_Class_Diagram
+!theme plain
+title Class Diagram
+
+class User {
+    - name: String
+    - email: String
+    - password: String
+    - role: String
+    --
+    + login()
+    + register()
+}
+
+class Alert {
+    - driverName: String
+    - location: Object
+    - status: String
+    --
+    + send()
+    + respond()
+}
+
+class Location {
+    - latitude: Number
+    - longitude: Number
+    --
+    + getDistance()
+}
+
+User "1" -- "*" Alert
+Alert "1" -- "1" Location
+
+@enduml
+
+@startuml Simple_State_Diagram
+!theme plain
+title State Diagram - Alert Status
+
+[*] --> Created
+Created --> Pending : Send
+Pending --> Responded : Police Response
+Responded --> Cleared : Complete
+Cleared --> [*]
+
+@enduml
+
+@startuml Simple_Deployment
+!theme plain
+title Deployment Diagram
+
+node "Mobile Device" {
+    [React Native App]
+}
+
+node "Server" {
+    [Node.js API]
+    [Socket.IO]
+}
+
+node "Database Server" {
+    database MongoDB
+}
+
+cloud "Google Maps API"
+
+[React Native App] --> [Node.js API] : HTTPS
+[React Native App] --> [Socket.IO] : WebSocket
+[React Native App] --> "Google Maps API"
+[Node.js API] --> MongoDB
+
+@enduml
+
+
+
