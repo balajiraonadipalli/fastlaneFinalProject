@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_ENDPOINTS } from '../config/api';
 
 const RegisterScreen = ({ route, navigation }) => {
   const role = route?.params?.role || 'police';
@@ -9,8 +11,9 @@ const RegisterScreen = ({ route, navigation }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [idNumber, setIdNumber] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (!name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim() || !idNumber.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -31,39 +34,135 @@ const RegisterScreen = ({ route, navigation }) => {
       return;
     }
 
-    Alert.alert('Success', `Registered as ${role}`, [
-      { 
-        text: 'OK', 
-        onPress: () => {
-          if (role === 'police') {
-            // Reset navigation stack to prevent going back
-            navigation.reset({
-              index: 0,
-              routes: [{ 
-                name: 'PoliceDashboard', 
-                params: { 
-                  role, 
-                  userName: name,
-                  policeStation: {
-                    name: 'Traffic Police Station',
-                    location: { latitude: 16.5062, longitude: 80.6480 }
-                  }
-                }
-              }],
-            });
-          } else {
-            // Reset navigation stack to prevent going back
-            navigation.reset({
-              index: 0,
-              routes: [{ 
-                name: 'Map', 
-                params: { role, userName: name }
-              }],
-            });
-          }
-        }
+    // Validate role-specific ID
+    if (role === 'police' && !idNumber.trim()) {
+      Alert.alert('Error', 'Badge Number is required for police registration');
+      return;
+    }
+    if (role === 'ambulance' && !idNumber.trim()) {
+      Alert.alert('Error', 'Medical License Number is required for ambulance registration');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('📝 Attempting registration:', { email: email.toLowerCase(), role, hasIdNumber: !!idNumber });
+      
+      // Prepare registration data
+      const registrationData = {
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        password: password,
+        role: role
+      };
+
+      // Add role-specific ID
+      if (role === 'police') {
+        registrationData.badgeNumber = idNumber.trim();
+      } else if (role === 'ambulance') {
+        registrationData.licenseNumber = idNumber.trim();
       }
-    ]);
+
+      // Call backend API to register
+      const response = await fetch(API_ENDPOINTS.REGISTER, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(registrationData)
+      });
+
+      console.log('📡 Registration response status:', response.status);
+
+      // Check if response is ok
+      if (!response.ok) {
+        let errorMessage = 'Failed to connect to server';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || `Server error (${response.status})`;
+          console.log('❌ Registration error response:', errorData);
+        } catch (e) {
+          console.log('❌ Could not parse error response:', e);
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        Alert.alert('Registration Failed', errorMessage);
+        setLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('📦 Registration response data:', { success: data.success, hasUser: !!data.user });
+
+      if (!data.success) {
+        console.log('❌ Registration failed:', data.message);
+        Alert.alert('Registration Failed', data.message || 'Registration failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Registration successful - store auth data
+      if (data.user) {
+        // Generate a simple token (or use the one from backend if provided)
+        const token = data.token || `token_${data.user.id}_${Date.now()}`;
+        
+        await AsyncStorage.setItem('authToken', token);
+        await AsyncStorage.setItem('userRole', role);
+        await AsyncStorage.setItem('userEmail', email.toLowerCase());
+        await AsyncStorage.setItem('userName', data.user.name || name);
+        if (data.user.id) {
+          await AsyncStorage.setItem('userId', data.user.id.toString());
+        }
+        
+        console.log('✅ Registration successful, auth data stored');
+      }
+
+      // Navigate based on role
+      if (role === 'police') {
+        navigation.reset({
+          index: 0,
+          routes: [{ 
+            name: 'PoliceDashboard', 
+            params: { 
+              role, 
+              userName: data.user?.name || name,
+              userEmail: email.toLowerCase(),
+              userId: data.user?.id,
+              policeStation: {
+                name: 'Traffic Police Station',
+                location: { latitude: 16.5062, longitude: 80.6480 }
+              }
+            }
+          }],
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ 
+            name: 'Map', 
+            params: { 
+              role, 
+              userName: data.user?.name || name,
+              userId: data.user?.id
+            }
+          }],
+        });
+      }
+    } catch (error) {
+      console.error('❌ Registration error:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        name: error.name
+      });
+      
+      let errorMessage = 'Failed to connect to server. ';
+      if (error.message.includes('Network request failed') || error.message.includes('fetch')) {
+        errorMessage += `\n\nPlease check:\n1. Backend server is running\n2. API URL is correct: ${API_ENDPOINTS.REGISTER}\n3. Your device/emulator can reach the server`;
+      } else {
+        errorMessage += error.message;
+      }
+      
+      Alert.alert('Connection Error', errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const roleColor = role === 'ambulance' ? '#E74C3C' : '#2E86AB';
@@ -152,11 +251,16 @@ const RegisterScreen = ({ route, navigation }) => {
             </View>
 
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: roleColor }]}
+              style={[styles.button, { backgroundColor: roleColor, opacity: loading ? 0.6 : 1 }]}
               onPress={handleRegister}
               activeOpacity={0.8}
+              disabled={loading}
             >
-              <Text style={styles.buttonText}>Register</Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Register</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity

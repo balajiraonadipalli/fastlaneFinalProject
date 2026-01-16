@@ -23,6 +23,8 @@ const LoginScreen = ({ route, navigation }) => {
 
     setLoading(true);
     try {
+      console.log('🔐 Attempting login:', { email: email.toLowerCase(), role });
+      
       // Authenticate with backend
       const response = await fetch(API_ENDPOINTS.LOGIN, {
         method: 'POST',
@@ -34,9 +36,30 @@ const LoginScreen = ({ route, navigation }) => {
         })
       });
 
+      console.log('📡 Login response status:', response.status);
+
+      // Check if response is ok
+      if (!response.ok) {
+        // Try to get error message from response
+        let errorMessage = 'Failed to connect to server';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || `Server error (${response.status})`;
+          console.log('❌ Login error response:', errorData);
+        } catch (e) {
+          console.log('❌ Could not parse error response:', e);
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        Alert.alert('Login Failed', errorMessage);
+        setLoading(false);
+        return;
+      }
+
       const data = await response.json();
+      console.log('📦 Login response data:', { success: data.success, hasToken: !!data.token });
 
       if (!data.success) {
+        console.log('❌ Login failed:', data.message);
         Alert.alert('Login Failed', data.message || 'Invalid credentials');
         setLoading(false);
         return;
@@ -87,8 +110,21 @@ const LoginScreen = ({ route, navigation }) => {
         });
       }
     } catch (error) {
-      console.error('Login error:', error);
-      Alert.alert('Error', 'Failed to connect to server. Please try again.');
+      console.error('❌ Login error:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      
+      let errorMessage = 'Failed to connect to server. ';
+      if (error.message.includes('Network request failed') || error.message.includes('fetch')) {
+        errorMessage += `\n\nPlease check:\n1. Backend server is running\n2. API URL is correct: ${API_ENDPOINTS.LOGIN}\n3. Your device/emulator can reach the server`;
+      } else {
+        errorMessage += error.message;
+      }
+      
+      Alert.alert('Connection Error', errorMessage);
     } finally {
       setLoading(false);
     }

@@ -11,14 +11,18 @@ import {
   Animated,
   Easing,
   Vibration,
-  Platform
+  Platform,
+  TextInput,
+  Modal
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Polyline, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { API_ENDPOINTS } from '../config/api';
 import { MAPBOX_ACCESS_TOKEN, MAPBOX_STYLES } from '../config/mapbox';
+import { colors, gradients, spacing, borderRadius, typography, shadows } from '../constants/theme';
 
 // Check if notifications are available and configure handler
 let notificationsAvailable = false;
@@ -41,6 +45,8 @@ try {
 }
 
 const { width, height } = Dimensions.get('window');
+const isSmallDevice = width < 375;
+const isTablet = width >= 768;
 
 const PoliceDashboardScreen = ({ route, navigation }) => {
   const { role, userName, policeStation, userId, userEmail } = route?.params || {};
@@ -51,6 +57,15 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
   const [showMap, setShowMap] = useState(false);
   const [newAlertsCount, setNewAlertsCount] = useState(0);
   const [lastAlertCount, setLastAlertCount] = useState(0);
+  const [selectedAlert, setSelectedAlert] = useState(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectMessage, setRejectMessage] = useState('');
+  const [rejectingAlert, setRejectingAlert] = useState(null);
+  const [alertsCleared, setAlertsCleared] = useState(false); // Flag to track if alerts were manually cleared
+  const [showNetworkErrorModal, setShowNetworkErrorModal] = useState(false); // Network error modal state
+  const alertsClearedRef = useRef(false); // Ref version for immediate access in polling
+  const pollingIntervalRef = useRef(null); // Store polling interval so we can clear it
+  const dismissedAlertIdsRef = useRef(new Set()); // Track dismissed alert IDs to prevent re-adding
   const locationSubscriptionRef = useRef(null);
   const mapRef = useRef(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -160,12 +175,32 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
         }
       }
 
+      // Get route information for notification
+      // Only show route if both addresses are available and valid
+      let routeInfo = 'Route information not available';
+      if (alert.startAddress && alert.endAddress && 
+          alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
+          alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown') {
+        // Truncate long addresses for notification
+        const startAddr = alert.startAddress.length > 30 
+          ? alert.startAddress.substring(0, 30) + '...' 
+          : alert.startAddress;
+        const endAddr = alert.endAddress.length > 30 
+          ? alert.endAddress.substring(0, 30) + '...' 
+          : alert.endAddress;
+        routeInfo = `${startAddr} → ${endAddr}`;
+      } else if (alert.startLocation && alert.endLocation) {
+        // Fallback to coordinates if addresses not available
+        routeInfo = `From: ${alert.startLocation.latitude?.toFixed(4)}, ${alert.startLocation.longitude?.toFixed(4)} → To: ${alert.endLocation.latitude?.toFixed(4)}, ${alert.endLocation.longitude?.toFixed(4)}`;
+      }
+      
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '🚨 New Emergency Alert!',
           body: `${alertCount} new ambulance ${alertCount > 1 ? 'alerts' : 'alert'}!\n` +
                 `Driver: ${alert.driverName || 'Unknown'}\n` +
-                `Distance: ${alert.distance ? (typeof alert.distance === 'number' ? `${(alert.distance / 1000).toFixed(2)} km` : alert.distance) : 'Unknown'}`,
+                `Distance: ${alert.distance ? (typeof alert.distance === 'number' ? `${(alert.distance / 1000).toFixed(2)} km` : alert.distance) : 'Unknown'}\n` +
+                `Route: ${routeInfo}`,
           data: { alertId: alert.id, type: 'emergency' },
           sound: true,
           priority: Notifications.AndroidNotificationPriority?.HIGH || 'high',
@@ -173,16 +208,30 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
         trigger: null, // Show immediately
       });
       
-      console.log('📱 Local notification sent');
+      console.log('📱 Local notification sent successfully');
     } catch (error) {
-      // Expo Go has limitations with notifications - this is expected and normal
-      console.log('ℹ️ Local notification not available (Expo Go limitation) - Alert.alert will be used');
+      // Log the actual error for debugging
+      console.error('❌ Error sending local notification:', error);
+      console.log('ℹ️ Will use Alert.alert as fallback');
       // Don't throw error - Alert.alert will be shown instead
     }
   };
 
   // Fetch alerts from backend
-  const fetchAlerts = async (showNotification = true) => {
+  const fetchAlerts = async (showNotification = true, forceFetch = false) => {
+    // Don't fetch if alerts were manually cleared (unless forced) - use ref for immediate check
+    if (alertsClearedRef.current && !forceFetch) {
+      console.log('⏸️ Alerts were manually cleared. Skipping fetch. Ref value:', alertsClearedRef.current);
+      console.log('⏸️ Use refresh to fetch again.');
+      return; // Exit immediately, don't proceed
+    }
+    
+    // Double-check at the very start (defensive programming)
+    if (alertsClearedRef.current && !forceFetch) {
+      console.log('⏸️ Double-check: Alerts cleared, aborting fetch');
+      return;
+    }
+    
     try {
       setLoading(true);
       console.log(`🔄 Fetching alerts from: ${API_ENDPOINTS.POLICE_ALERTS}`);
@@ -196,18 +245,38 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
       console.log(`📦 Backend response:`, { success: data.success, count: data.count, alertsLength: data.alerts?.length });
       
       if (data.success) {
-        const newAlerts = data.alerts || [];
+        let newAlerts = data.alerts || [];
         const previousAlerts = alertsRef.current || [];
+        
+        // CRITICAL: Filter out dismissed alerts (even if backend has them)
+        const dismissedIds = dismissedAlertIdsRef.current;
+        if (dismissedIds.size > 0) {
+          const beforeFilter = newAlerts.length;
+          newAlerts = newAlerts.filter(alert => !dismissedIds.has(alert.id));
+          const afterFilter = newAlerts.length;
+          if (beforeFilter !== afterFilter) {
+            console.log(`🚫 Filtered out ${beforeFilter - afterFilter} dismissed alerts. Remaining: ${afterFilter}`);
+          }
+        }
+        
+        // Sort alerts by timestamp (newest first) - ensures latest alerts appear at the top
+        newAlerts.sort((a, b) => {
+          const timeA = new Date(a.timestamp || a.createdAt || 0);
+          const timeB = new Date(b.timestamp || b.createdAt || 0);
+          return timeB - timeA; // Descending order (newest first)
+        });
         
         console.log(`📊 Alert comparison:`, {
           newAlerts: newAlerts.length,
           previousAlerts: previousAlerts.length,
+          dismissedCount: dismissedIds.size,
           newAlertIds: newAlerts.map(a => a.id),
           previousAlertIds: previousAlerts.map(a => a.id)
         });
         
         // Detect new alerts by comparing IDs
-        if (showNotification && previousAlerts.length >= 0) {
+        // Only notify if we have previous alerts to compare against (prevents notifying on first load)
+        if (showNotification && previousAlerts.length > 0) {
           const newAlertIds = newAlerts.map(a => a.id);
           const previousAlertIds = previousAlerts.map(a => a.id);
           const actuallyNewAlerts = newAlerts.filter(a => !previousAlertIds.includes(a.id));
@@ -274,20 +343,60 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           }
         }
         
+        // CRITICAL: Check ref BEFORE updating state
+        // Even with forceFetch, we need to respect if alerts were cleared
+        // However, if forceFetch is true (user pulled to refresh), they want alerts back
+        // So we only block if alerts are cleared AND it's not a forced refresh
+        if (alertsClearedRef.current && !forceFetch) {
+          console.log('⏸️ Alerts were cleared. Ref value:', alertsClearedRef.current);
+          console.log('⏸️ NOT updating state with backend data. Backend has', newAlerts.length, 'alerts but they are ignored.');
+          console.log('⏸️ forceFetch:', forceFetch, '- State update blocked');
+          return; // Exit early, don't update anything
+        }
+        
+        // If forceFetch is true, user explicitly refreshed - they want alerts back
+        // So we allow the update and reset the cleared flag
+        if (forceFetch && alertsClearedRef.current) {
+          console.log('🔄 User pulled to refresh - allowing alerts to be fetched again');
+          alertsClearedRef.current = false; // Reset since user explicitly wants alerts
+          setAlertsCleared(false);
+        }
+        
+        // Safe to update alerts
+        console.log('✅ Updating alerts state. Ref cleared:', alertsClearedRef.current, 'forceFetch:', forceFetch);
         setAlerts(newAlerts);
         alertsRef.current = newAlerts;
         setLastAlertCount(newAlerts.length);
         console.log(`✅ Fetched ${newAlerts.length} police alerts (previous: ${previousAlerts.length})`);
       } else {
         console.error('❌ Failed to fetch alerts:', data.message);
-        setAlerts([]);
-        alertsRef.current = [];
+        // Only clear alerts on error if they weren't manually cleared
+        if (!alertsClearedRef.current) {
+          setAlerts([]);
+          alertsRef.current = [];
+        }
       }
     } catch (error) {
       console.error('❌ Error fetching alerts:', error);
       console.error('Error details:', error.message, error.stack);
-      setAlerts([]);
-      alertsRef.current = [];
+      
+      // Check if it's a network error
+      const isNetworkError = error.message?.includes('Network request failed') || 
+                            error.message?.includes('Failed to fetch') ||
+                            error.message?.includes('NetworkError') ||
+                            error.message?.includes('timeout') ||
+                            error.name === 'TypeError' && error.message?.includes('fetch');
+      
+      if (isNetworkError) {
+        // Show network error modal
+        setShowNetworkErrorModal(true);
+      }
+      
+      // Only clear alerts on error if they weren't manually cleared
+      if (!alertsClearedRef.current) {
+        setAlerts([]);
+        alertsRef.current = [];
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -336,6 +445,18 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
     } catch (error) {
       console.error('❌ Error updating police location:', error);
       console.error('Request body:', { userId, userEmail });
+      
+      // Check if it's a network error
+      const isNetworkError = error.message?.includes('Network request failed') || 
+                            error.message?.includes('Failed to fetch') ||
+                            error.message?.includes('NetworkError') ||
+                            error.message?.includes('timeout') ||
+                            error.name === 'TypeError' && error.message?.includes('fetch');
+      
+      if (isNetworkError) {
+        // Show network error modal
+        setShowNetworkErrorModal(true);
+      }
     }
   };
 
@@ -499,10 +620,25 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
     
     // Poll for new alerts every 3 seconds (faster for better responsiveness)
     const interval = setInterval(() => {
+      // CRITICAL: Check ref before calling fetchAlerts
+      // If alerts were cleared, completely skip the fetch
+      if (alertsClearedRef.current) {
+        console.log('⏸️ Polling skipped - alerts were cleared. Ref:', alertsClearedRef.current);
+        return; // Exit early, don't call fetchAlerts at all
+      }
+      
+      // Only fetch if alerts haven't been cleared
+      console.log('🔄 Polling: Fetching alerts (ref cleared:', alertsClearedRef.current, ')');
       fetchAlerts(true); // Show notifications for new alerts
     }, 3000);
+    
+    pollingIntervalRef.current = interval; // Store interval reference
+    console.log('✅ Polling interval started. Interval ID stored in ref.');
 
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+      pollingIntervalRef.current = null;
+    };
   }, []);
 
   // Reset new alerts count when user views alerts
@@ -518,46 +654,345 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
   // Handle refresh
   const onRefresh = () => {
     setRefreshing(true);
-    fetchAlerts();
+    
+    // Check if alerts were previously cleared
+    const wasCleared = alertsClearedRef.current;
+    
+    // If user refreshes, they want to see alerts again
+    // But we keep the dismissed list so old alerts don't come back
+    if (wasCleared) {
+      console.log('🔄 User pulled to refresh after clearing - resetting cleared flag but keeping dismissed list');
+      console.log(`🚫 Will filter out ${dismissedAlertIdsRef.current.size} previously dismissed alerts`);
+    }
+    
+    // Reset flags - user explicitly wants to refresh
+    setAlertsCleared(false); // Reset state flag
+    alertsClearedRef.current = false; // Reset ref flag - user wants to fetch again
+    // NOTE: We do NOT clear dismissedAlertIdsRef - dismissed alerts stay dismissed
+    
+    // Restart polling if it was stopped
+    if (!pollingIntervalRef.current) {
+      const interval = setInterval(() => {
+        // Check ref before calling fetchAlerts
+        if (!alertsClearedRef.current) {
+          fetchAlerts(true); // Show notifications for new alerts
+        } else {
+          console.log('⏸️ Polling skipped - alerts were cleared');
+        }
+      }, 3000);
+      pollingIntervalRef.current = interval;
+      console.log('🔄 Polling restarted');
+    }
+    
+    // Force fetch on refresh - but check one more time before updating state
+    fetchAlerts(true, true); // Force fetch on refresh
   };
 
-  // Send response to alert
-  const handleRespond = (alert, trafficStatus) => {
+  // Create dummy test alert at current location
+  const createDummyAlert = async () => {
+    if (!currentLocation) {
+      Alert.alert('Error', 'Please wait for location to be available');
+      return;
+    }
+
+    try {
+      // Create a test route from current location to a nearby destination (2km away)
+      const destinationOffset = 0.02; // ~2km
+      const testStartLocation = {
+        latitude: currentLocation.latitude - destinationOffset * 0.5,
+        longitude: currentLocation.longitude - destinationOffset * 0.5
+      };
+      const testEndLocation = {
+        latitude: currentLocation.latitude + destinationOffset * 0.5,
+        longitude: currentLocation.longitude + destinationOffset * 0.5
+      };
+
+      // Create simple route coordinates (straight line for testing)
+      const testRouteCoords = [];
+      const steps = 20;
+      for (let i = 0; i <= steps; i++) {
+        testRouteCoords.push({
+          latitude: testStartLocation.latitude + (testEndLocation.latitude - testStartLocation.latitude) * (i / steps),
+          longitude: testStartLocation.longitude + (testEndLocation.longitude - testStartLocation.longitude) * (i / steps)
+        });
+      }
+
+      const dummyAlertData = {
+        policeId: userId || 'test-police-001',
+        policeName: policeStation?.name || 'Test Police Station',
+        area: 'Test Area',
+        ambulanceRole: 'ambulance',
+        driverName: 'Test Ambulance Driver',
+        distance: 500, // 500 meters
+        location: currentLocation, // Alert at police's current location
+        route: 'Test Emergency Route',
+        routeCoordinates: testRouteCoords,
+        startLocation: testStartLocation,
+        endLocation: testEndLocation,
+        startAddress: 'Test Source Location',
+        endAddress: 'Test Destination Location',
+        timestamp: new Date().toISOString(),
+        forAllPolice: true
+      };
+
+      console.log('🧪 Creating dummy alert:', dummyAlertData);
+
+      // Send to backend
+      const response = await fetch(API_ENDPOINTS.POLICE_ALERT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dummyAlertData)
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        Alert.alert('Success', 'Dummy test alert created successfully!');
+        // Refresh alerts to show the new one
+        fetchAlerts(false);
+      } else {
+        Alert.alert('Error', data.message || 'Failed to create dummy alert');
+      }
+    } catch (error) {
+      console.error('Error creating dummy alert:', error);
+      Alert.alert('Error', 'Failed to create dummy alert. Please try again.');
+    }
+  };
+
+  // Show alert route on map
+  const handleShowOnMap = (alert) => {
+    setSelectedAlert(alert);
+    setShowMap(true);
+    
+    // Show ambulance route: Source (current location) → Destination
+    // This helps police understand the route the ambulance is traveling
+    if (mapRef.current) {
+      // Collect all points to show: ambulance current location, source, destination
+      const allPoints = [];
+      
+      // Add ambulance's current location (if available)
+      if (alert.location && alert.location.latitude && alert.location.longitude) {
+        allPoints.push(alert.location);
+      }
+      
+      // Add source location (start point)
+      if (alert.startLocation && alert.startLocation.latitude && alert.startLocation.longitude) {
+        allPoints.push(alert.startLocation);
+      }
+      
+      // Add destination location (end point)
+      if (alert.endLocation && alert.endLocation.latitude && alert.endLocation.longitude) {
+        allPoints.push(alert.endLocation);
+      }
+      
+      if (allPoints.length > 0) {
+        // Calculate bounds to show all points
+        const lats = allPoints.map(p => p.latitude);
+        const lngs = allPoints.map(p => p.longitude);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        
+        // Calculate center and deltas with padding
+        const midLat = (minLat + maxLat) / 2;
+        const midLng = (minLng + maxLng) / 2;
+        const latDelta = Math.max((maxLat - minLat) * 1.8, 0.02); // Add 80% padding
+        const lngDelta = Math.max((maxLng - minLng) * 1.8, 0.02); // Add 80% padding
+        
+        // Animate to show the complete route
+        mapRef.current.animateToRegion({
+          latitude: midLat,
+          longitude: midLng,
+          latitudeDelta: latDelta,
+          longitudeDelta: lngDelta,
+        }, 1000);
+        
+        console.log('🗺️ Showing ambulance route on map:', {
+          ambulanceLocation: alert.location ? 'Yes' : 'No',
+          source: alert.startLocation ? 'Yes' : 'No',
+          destination: alert.endLocation ? 'Yes' : 'No',
+          routePoints: alert.routeCoordinates?.length || 0,
+          bounds: { minLat, maxLat, minLng, maxLng }
+        });
+      } else {
+        // Fallback: Center on ambulance location if no route points available
+        if (alert.location && alert.location.latitude && alert.location.longitude) {
+          mapRef.current.animateToRegion({
+            latitude: alert.location.latitude,
+            longitude: alert.location.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 1000);
+        }
+      }
+    }
+  };
+
+  // Handle accept alert
+  const handleAccept = async (alert) => {
+    console.log('\n🚔 ===== POLICE DASHBOARD: ACCEPT ROUTE REQUESTED =====');
+    console.log('📋 Alert Details:', {
+      alertId: alert.id,
+      driverName: alert.driverName,
+      policeName: alert.policeName || policeStation,
+      startAddress: alert.startAddress,
+      endAddress: alert.endAddress,
+      timestamp: alert.timestamp || alert.createdAt
+    });
+    
     Alert.alert(
-      'Confirm Response',
-      `Mark traffic as ${trafficStatus === 'clear' ? 'CLEAR' : 'BUSY'}?`,
+      'Accept Route',
+      'Confirm that this route is acceptable for the ambulance?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => {
+            console.log('❌ POLICE: User cancelled accept action');
+            console.log('===== END POLICE ACCEPT REQUEST =====\n');
+          }
+        },
         {
-          text: 'Confirm',
+          text: 'Accept',
           onPress: async () => {
+            console.log('\n✅ POLICE: User confirmed ACCEPT action');
+            console.log('📤 POLICE: Preparing to send acceptance to backend...');
+            console.log('  - Alert ID:', alert.id);
+            console.log('  - Traffic Status: accepted');
+            console.log('  - Police Officer:', userName || 'Police Officer');
+            console.log('  - Police Station:', alert.policeName || policeStation);
+            console.log('  - Driver Name:', alert.driverName);
+            
             try {
+              const requestBody = {
+                alertId: alert.id,
+                trafficStatus: 'accepted',
+                message: 'Route approved. You can proceed.',
+                policeOfficer: userName || 'Police Officer'
+              };
+              
+              console.log('📤 POLICE: Sending POST request to:', API_ENDPOINTS.POLICE_RESPONSE);
+              console.log('📤 POLICE: Request body:', JSON.stringify(requestBody, null, 2));
+              
               const response = await fetch(API_ENDPOINTS.POLICE_RESPONSE, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  alertId: alert.id,
-                  trafficStatus: trafficStatus,
-                  message: trafficStatus === 'clear' ? 'Route is clear for emergency vehicle' : 'Heavy traffic detected',
-                  policeOfficer: userName || 'Police Officer'
-                })
+                body: JSON.stringify(requestBody)
               });
 
+              console.log('📥 POLICE: Received response from backend');
+              console.log('  - Status:', response.status);
+              console.log('  - Status Text:', response.statusText);
+              
               const data = await response.json();
+              console.log('📥 POLICE: Response data:', JSON.stringify(data, null, 2));
+              
               if (data.success) {
-                Alert.alert('Success', 'Response sent to ambulance driver');
-                fetchAlerts(); // Refresh alerts
+                console.log('✅ POLICE: Backend confirmed success!');
+                console.log('✅ POLICE: Alert updated in backend:', {
+                  alertId: data.alert?.id,
+                  status: data.alert?.status,
+                  trafficStatus: data.alert?.trafficStatus,
+                  policeResponse: data.alert?.policeResponse,
+                  respondedAt: data.alert?.respondedAt
+                });
+                console.log('✅ POLICE: Ambulance should receive notification via:');
+                console.log('  1. WebSocket (if connected)');
+                console.log('  2. Polling (ambulance polls every 2 seconds)');
+                console.log('===== POLICE ACCEPT COMPLETED SUCCESSFULLY =====\n');
+                
+                Alert.alert('Success', 'Route accepted. Ambulance has been notified.');
+                // Refresh alerts immediately to update counts
+                setTimeout(() => {
+                  fetchAlerts(false);
+                }, 500);
               } else {
+                console.error('❌ POLICE: Backend returned error:', data.message);
+                console.log('===== POLICE ACCEPT FAILED =====\n');
                 Alert.alert('Error', data.message || 'Failed to send response');
               }
             } catch (error) {
-              console.error('Error sending response:', error);
-              Alert.alert('Error', 'Failed to send response. Please try again.');
+              console.error('❌ POLICE: Error sending response:', error);
+              console.error('  - Error message:', error.message);
+              console.error('  - Error stack:', error.stack);
+              console.log('===== POLICE ACCEPT ERROR =====\n');
+              
+              // Check if it's a network error
+              const isNetworkError = error.message?.includes('Network request failed') || 
+                                    error.message?.includes('Failed to fetch') ||
+                                    error.message?.includes('NetworkError') ||
+                                    error.message?.includes('timeout') ||
+                                    error.name === 'TypeError' && error.message?.includes('fetch');
+              
+              if (isNetworkError) {
+                setShowNetworkErrorModal(true);
+              } else {
+                Alert.alert('Error', 'Failed to send response. Please try again.');
+              }
             }
           }
         }
       ]
     );
+  };
+
+  // Handle reject alert - show modal for message input
+  const handleReject = (alert) => {
+    setRejectingAlert(alert);
+    setRejectMessage('Take another way, not this way');
+    setShowRejectModal(true);
+  };
+
+  // Submit rejection with custom message
+  const handleSubmitRejection = async () => {
+    if (!rejectingAlert) return;
+    
+    if (!rejectMessage.trim()) {
+      Alert.alert('Error', 'Please enter a rejection message');
+      return;
+    }
+
+    try {
+      const response = await fetch(API_ENDPOINTS.POLICE_RESPONSE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alertId: rejectingAlert.id,
+          trafficStatus: 'rejected',
+          message: rejectMessage.trim(),
+          policeOfficer: userName || 'Police Officer'
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        Alert.alert('Success', 'Rejection message sent to ambulance driver');
+        setShowRejectModal(false);
+        setRejectMessage('');
+        setRejectingAlert(null);
+        // Refresh alerts immediately to update counts
+        setTimeout(() => {
+          fetchAlerts(false);
+        }, 500);
+      } else {
+        Alert.alert('Error', data.message || 'Failed to send response');
+      }
+    } catch (error) {
+      console.error('Error sending rejection:', error);
+      
+      // Check if it's a network error
+      const isNetworkError = error.message?.includes('Network request failed') || 
+                            error.message?.includes('Failed to fetch') ||
+                            error.message?.includes('NetworkError') ||
+                            error.message?.includes('timeout') ||
+                            error.name === 'TypeError' && error.message?.includes('fetch');
+      
+      if (isNetworkError) {
+        setShowNetworkErrorModal(true);
+      } else {
+        Alert.alert('Error', 'Failed to send rejection. Please try again.');
+      }
+    }
   };
 
   // Handle logout
@@ -570,11 +1005,56 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Home' }],
-            });
+          onPress: async () => {
+            try {
+              // Stop location tracking
+              if (locationSubscriptionRef.current) {
+                try {
+                  if (typeof locationSubscriptionRef.current.remove === 'function') {
+                    locationSubscriptionRef.current.remove();
+                    locationSubscriptionRef.current = null;
+                    console.log('✅ Police location subscription removed');
+                  }
+                } catch (error) {
+                  console.error('Error removing location subscription:', error);
+                }
+              }
+
+              // Clear all authentication data from AsyncStorage
+              await AsyncStorage.multiRemove([
+                'authToken',
+                'userRole',
+                'userName',
+                'userEmail',
+                'userId'
+              ]);
+              console.log('✅ Authentication data cleared from AsyncStorage');
+
+              // Navigate to Home screen
+              try {
+                navigation.replace('Home');
+              } catch (error) {
+                try {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Home' }],
+                  });
+                } catch (resetError) {
+                  navigation.navigate('Home');
+                }
+              }
+            } catch (error) {
+              console.error('Error during logout:', error);
+              // Still try to navigate even if clearing storage fails
+              try {
+                navigation.replace('Home');
+              } catch (navError) {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Home' }],
+                });
+              }
+            }
           }
         }
       ]
@@ -604,29 +1084,143 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
     return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
   };
 
+  // Handle clear alerts
+  const handleClearAlerts = () => {
+    if (alerts.length === 0) {
+      Alert.alert('No Alerts', 'There are no alerts to clear.');
+      return;
+    }
+
+    Alert.alert(
+      'Clear All Alerts',
+      `Are you sure you want to clear all ${alerts.length} alert(s)? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: () => {
+            // CRITICAL: Mark all current alerts as dismissed
+            // This prevents them from being re-added even if backend still has them
+            const currentAlertIds = alerts.map(a => a.id).filter(id => id != null);
+            currentAlertIds.forEach(id => {
+              dismissedAlertIdsRef.current.add(id);
+            });
+            console.log(`🚫 Marked ${currentAlertIds.length} alerts as dismissed. Dismissed IDs:`, Array.from(dismissedAlertIdsRef.current));
+            
+            // Set ref FIRST (before state) for immediate effect
+            alertsClearedRef.current = true;
+            setAlertsCleared(true); // Set state flag
+            
+            // Stop the polling interval completely
+            if (pollingIntervalRef.current) {
+              clearInterval(pollingIntervalRef.current);
+              pollingIntervalRef.current = null;
+              console.log('🛑 Polling interval stopped');
+            }
+            
+            // Clear local state
+            setAlerts([]);
+            alertsRef.current = [];
+            setNewAlertsCount(0);
+            setLastAlertCount(0);
+            setSelectedAlert(null);
+            
+            console.log('✅ All alerts cleared. Ref set to:', alertsClearedRef.current);
+            console.log('✅ Polling stopped. Pull down to refresh to restart.');
+            console.log(`🚫 Dismissed alerts will be filtered out. Total dismissed: ${dismissedAlertIdsRef.current.size}`);
+            
+            // Show success message
+            Alert.alert('Success', 'All alerts have been cleared. Pull down to refresh if you want to fetch alerts again.');
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <LinearGradient
-      colors={['#2E86AB', '#1A5F7A']}
+      colors={['#1E3A5F', '#2E86AB', '#4A90E2']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
       style={styles.container}
     >
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerEmoji}>🚔</Text>
-          <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>Welcome, {userName || 'Officer'}</Text>
-            <Text style={styles.headerSubtitle}>
-              {policeStation?.name || 'Traffic Police Station'}
-            </Text>
+      <LinearGradient
+        colors={['rgba(30, 58, 95, 0.95)', 'rgba(46, 134, 171, 0.9)', 'rgba(74, 144, 226, 0.85)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        {/* Top Row - Welcome Section */}
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerEmojiContainer}>
+              <Text style={styles.headerEmoji}>🚔</Text>
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.headerTitle}>Welcome, {userName || 'Officer'}</Text>
+              <Text style={styles.headerSubtitle}>
+                {policeStation?.name || 'Traffic Police Station'}
+              </Text>
+            </View>
           </View>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['rgba(231, 76, 60, 0.8)', 'rgba(192, 57, 43, 0.9)']}
+              style={styles.logoutButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.logoutText}>{isSmallDevice ? '🚪' : '🚪 Logout'}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
-          <Text style={styles.logoutText}>🚪 Logout</Text>
-        </TouchableOpacity>
-      </View>
+
+        {/* Bottom Row - Test Alert and Clear Alerts Buttons */}
+        <View style={styles.headerBottomRow}>
+          <TouchableOpacity
+            style={styles.testAlertButton}
+            onPress={createDummyAlert}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['rgba(155, 89, 182, 0.8)', 'rgba(142, 68, 173, 0.9)']}
+              style={styles.testAlertButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.testAlertButtonText}>🧪 Create Test Alert</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          {alerts.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearAlertsButton}
+              onPress={handleClearAlerts}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={['rgba(149, 165, 166, 0.8)', 'rgba(127, 140, 141, 0.9)']}
+                style={styles.clearAlertsButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.clearAlertsButtonText}>
+                  {isSmallDevice ? '🗑️' : '🗑️ Clear Alerts'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
+      </LinearGradient>
 
       {/* Stats Bar */}
       <View style={styles.statsBar}>
@@ -817,62 +1411,165 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
                 </Animated.View>
               </Marker>
 
-              {/* Ambulance markers from alerts with scale animation */}
-              {alerts.map((alert, index) => {
-                if (!alert.location || !alert.location.latitude || !alert.location.longitude) {
+              {/* Ambulance markers from alerts - Group by driverName to show only one circle per ambulance */}
+              {(() => {
+                // Group alerts by driverName to avoid duplicate circles for same ambulance
+                const uniqueAmbulances = new Map();
+                alerts.forEach(alert => {
+                  if (!alert.location || !alert.location.latitude || !alert.location.longitude) {
+                    return;
+                  }
+                  const driverName = alert.driverName || 'Unknown';
+                  // Use the most recent alert for each ambulance
+                  if (!uniqueAmbulances.has(driverName) || 
+                      new Date(alert.timestamp || alert.createdAt) > new Date(uniqueAmbulances.get(driverName).timestamp || uniqueAmbulances.get(driverName).createdAt)) {
+                    uniqueAmbulances.set(driverName, alert);
+                  }
+                });
+                
+                return Array.from(uniqueAmbulances.values()).map((alert) => {
+                  const isSelected = selectedAlert?.id === alert.id;
+                  const roundedLat = Math.round(alert.location.latitude * 100000) / 100000;
+                  const roundedLng = Math.round(alert.location.longitude * 100000) / 100000;
+                  
+                  return (
+                    <React.Fragment key={`ambulance-${String(alert.driverName || alert.id || 'unknown')}`}>
+                      {/* 1 km red radius circle around ambulance - Only one per ambulance */}
+                      <Circle
+                        center={{
+                          latitude: roundedLat,
+                          longitude: roundedLng,
+                        }}
+                        radius={1000} // 1 km in meters
+                        fillColor="rgba(231, 76, 60, 0.25)"
+                        strokeColor="#E74C3C"
+                        strokeWidth={3}
+                        zIndex={1}
+                        tracksViewChanges={false}
+                      />
+                      <Marker
+                        coordinate={{
+                          latitude: alert.location.latitude,
+                          longitude: alert.location.longitude,
+                        }}
+                        title={`Ambulance: ${String(alert.driverName || 'Unknown')}`}
+                        description={`Distance: ${alert.distance ? (typeof alert.distance === 'number' ? `${(alert.distance / 1000).toFixed(2)} km` : String(alert.distance || 'Unknown')) : 'Unknown'}`}
+                        anchor={{ x: 0.5, y: 0.5 }}
+                        tracksViewChanges={false}
+                      >
+                        <Animated.View
+                          style={[
+                            styles.ambulanceMarkerContainer,
+                            {
+                              transform: [{ 
+                                scale: isSelected ? markerScaleAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [1.2, 1.3]
+                                }) : markerScaleAnim 
+                              }],
+                            },
+                          ]}
+                        >
+                          <View style={[
+                            styles.ambulanceMarkerPulse,
+                            isSelected && styles.ambulanceMarkerPulseSelected
+                          ]} />
+                          <View style={[
+                            styles.ambulanceMarker,
+                            alert.status === 'pending' && styles.ambulanceMarkerPending,
+                            isSelected && styles.ambulanceMarkerSelected,
+                          ]}>
+                            <View style={styles.ambulanceIconCircle}>
+                              <Text style={styles.ambulanceMarkerEmoji}>🚑</Text>
+                            </View>
+                          </View>
+                        </Animated.View>
+                      </Marker>
+                    </React.Fragment>
+                  );
+                });
+              })()}
+
+              {/* Route polylines from alerts - Show route clearly when selected */}
+              {alerts.map((alert) => {
+                // Show route only if this alert is selected (when "Show on Map" is clicked)
+                const shouldShowRoute = selectedAlert?.id === alert.id;
+                
+                if (!shouldShowRoute) {
                   return null;
                 }
-                return (
-                  <Marker
-                    key={alert.id}
-                    coordinate={{
-                      latitude: alert.location.latitude,
-                      longitude: alert.location.longitude,
-                    }}
-                    title={`Ambulance: ${alert.driverName || 'Unknown'}`}
-                    description={`Distance: ${alert.distance ? (typeof alert.distance === 'number' ? `${(alert.distance / 1000).toFixed(2)} km` : alert.distance) : 'Unknown'}`}
-                    anchor={{ x: 0.5, y: 0.5 }}
-                    tracksViewChanges={false}
-                  >
-                    <Animated.View
-                      style={[
-                        styles.ambulanceMarkerContainer,
-                        {
-                          transform: [{ scale: markerScaleAnim }],
-                        },
-                      ]}
-                    >
-                      <View style={styles.ambulanceMarkerPulse} />
-                      <View style={[
-                        styles.ambulanceMarker,
-                        alert.status === 'pending' && styles.ambulanceMarkerPending,
-                      ]}>
-                        <View style={styles.ambulanceIconCircle}>
-                          <Text style={styles.ambulanceMarkerEmoji}>🚑</Text>
-                        </View>
-                      </View>
-                    </Animated.View>
-                  </Marker>
-                );
+                
+                // Show route if routeCoordinates exist
+                if (alert.routeCoordinates && Array.isArray(alert.routeCoordinates) && alert.routeCoordinates.length >= 2) {
+                  return (
+                    <Polyline
+                      key={`route-${alert.id}`}
+                      coordinates={alert.routeCoordinates}
+                      strokeColor="#E74C3C" // Red color for ambulance route
+                      strokeWidth={6} // Thicker line for better visibility
+                      lineDashPattern={[15, 10]} // More visible dash pattern
+                      lineCap="round"
+                      lineJoin="round"
+                      zIndex={100}
+                    />
+                  );
+                }
+                
+                // If no routeCoordinates but we have start and end locations, draw a straight line
+                if (alert.startLocation && alert.endLocation) {
+                  return (
+                    <Polyline
+                      key={`route-straight-${alert.id}`}
+                      coordinates={[alert.startLocation, alert.endLocation]}
+                      strokeColor="#E74C3C"
+                      strokeWidth={4}
+                      lineDashPattern={[10, 5]}
+                      lineCap="round"
+                      lineJoin="round"
+                      zIndex={100}
+                    />
+                  );
+                }
+                
+                return null;
               })}
 
-              {/* Route polylines from alerts with animated dash */}
-              {alerts.map((alert) => {
-                if (!alert.routeCoordinates || !Array.isArray(alert.routeCoordinates) || alert.routeCoordinates.length < 2) {
-                  return null;
-                }
-                return (
-                  <Polyline
-                    key={`route-${alert.id}`}
-                    coordinates={alert.routeCoordinates}
-                    strokeColor={alert.status === 'pending' ? '#E74C3C' : '#27AE60'}
-                    strokeWidth={5}
-                    lineDashPattern={[10, 5]}
-                    lineCap="round"
-                    lineJoin="round"
-                  />
-                );
-              })}
+              {/* Source and Destination markers for selected alert - Always show when alert is selected */}
+              {selectedAlert && selectedAlert.startLocation && (
+                <Marker
+                  coordinate={{
+                    latitude: selectedAlert.startLocation.latitude,
+                    longitude: selectedAlert.startLocation.longitude,
+                  }}
+                  title="📍 Source (Ambulance Starting Point)"
+                  description={String(selectedAlert.startAddress || 'Ambulance Starting Location')}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                  zIndex={200}
+                >
+                  <View style={styles.sourceMarker}>
+                    <Text style={styles.sourceMarkerText}>📍</Text>
+                  </View>
+                </Marker>
+              )}
+
+              {selectedAlert && selectedAlert.endLocation && (
+                <Marker
+                  coordinate={{
+                    latitude: selectedAlert.endLocation.latitude,
+                    longitude: selectedAlert.endLocation.longitude,
+                  }}
+                  title="🎯 Destination (Ambulance Destination)"
+                  description={String(selectedAlert.endAddress || 'Ambulance Destination')}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                  zIndex={200}
+                >
+                  <View style={styles.destinationMarker}>
+                    <Text style={styles.destinationMarkerText}>🎯</Text>
+                  </View>
+                </Marker>
+              )}
             </MapView>
           ) : (
             <Animated.View 
@@ -909,7 +1606,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           </View>
         ) : (
           alerts.map((alert) => (
-            <View key={alert.id} style={styles.alertCard}>
+            <View key={String(alert.id || alert.timestamp || Math.random())} style={styles.alertCard}>
               <View style={styles.alertHeader}>
                 <View style={styles.alertHeaderLeft}>
                   <Text style={styles.alertEmoji}>🚑</Text>
@@ -936,34 +1633,93 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
               </View>
 
               <View style={styles.alertBody}>
-                {alert.startAddress && alert.endAddress && (
-                  <View style={styles.routeInfo}>
-                    <Text style={styles.routeLabel}>Route:</Text>
-                    <Text style={styles.routeText}>
-                      {alert.startAddress} → {alert.endAddress}
-                    </Text>
-                  </View>
-                )}
+                {/* Show route addresses if available, otherwise show coordinates */}
+                {(() => {
+                  const hasValidAddresses = alert.startAddress && alert.endAddress && 
+                    alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
+                    alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown';
+                  
+                  if (hasValidAddresses) {
+                    return (
+                      <View style={styles.routeInfo}>
+                        <Text style={styles.routeLabel}>Route:</Text>
+                        <Text style={styles.routeText}>
+                          {alert.startAddress} → {alert.endAddress}
+                        </Text>
+                      </View>
+                    );
+                  } else if (alert.startLocation || alert.endLocation) {
+                    return (
+                      <View style={styles.routeInfo}>
+                        <Text style={styles.routeLabel}>Route (Coordinates):</Text>
+                        {alert.startLocation && (
+                          <Text style={styles.routeText}>
+                            📍 From: {alert.startLocation.latitude.toFixed(6)}, {alert.startLocation.longitude.toFixed(6)}
+                          </Text>
+                        )}
+                        {alert.endLocation && (
+                          <Text style={styles.routeText}>
+                            🎯 To: {alert.endLocation.latitude.toFixed(6)}, {alert.endLocation.longitude.toFixed(6)}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  } else {
+                    return (
+                      <View style={styles.routeInfo}>
+                        <Text style={styles.routeLabel}>Route:</Text>
+                        <Text style={styles.routeText}>Location information not available</Text>
+                      </View>
+                    );
+                  }
+                })()}
 
-                {alert.distance && (
+                {/* Show additional coordinates if addresses are available (for reference) */}
+                {(() => {
+                  const hasValidAddresses = alert.startAddress && alert.endAddress && 
+                    alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
+                    alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown';
+                  const hasLocations = alert.startLocation || alert.endLocation;
+                  
+                  if (hasValidAddresses && hasLocations) {
+                    return (
+                      <View style={styles.coordinatesInfo}>
+                        <Text style={styles.coordinatesLabel}>Coordinates:</Text>
+                        {alert.startLocation && (
+                          <Text style={styles.coordinatesText}>
+                            📍 Source: {alert.startLocation.latitude.toFixed(6)}, {alert.startLocation.longitude.toFixed(6)}
+                          </Text>
+                        )}
+                        {alert.endLocation && (
+                          <Text style={styles.coordinatesText}>
+                            🎯 Destination: {alert.endLocation.latitude.toFixed(6)}, {alert.endLocation.longitude.toFixed(6)}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {alert.distance ? (
                   <View style={styles.distanceInfo}>
                     <Text style={styles.distanceLabel}>Distance:</Text>
                     <Text style={styles.distanceText}>
                       {typeof alert.distance === 'number' 
                         ? `${(alert.distance / 1000).toFixed(2)} km`
-                        : alert.distance}
+                        : String(alert.distance || 'Unknown')}
                     </Text>
                   </View>
-                )}
+                ) : null}
 
-                {alert.area && (
+                {alert.area ? (
                   <View style={styles.areaInfo}>
                     <Text style={styles.areaLabel}>Area:</Text>
-                    <Text style={styles.areaText}>{alert.area}</Text>
+                    <Text style={styles.areaText}>{String(alert.area || 'Unknown')}</Text>
                   </View>
-                )}
+                ) : null}
 
-                {alert.trafficStatus && (
+                {alert.trafficStatus ? (
                   <View style={styles.trafficInfo}>
                     <Text style={styles.trafficLabel}>Traffic Status:</Text>
                     <Text style={[
@@ -974,37 +1730,152 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
                       {alert.trafficStatus === 'clear' ? '✅ CLEAR' : '⚠️ BUSY'}
                     </Text>
                   </View>
-                )}
+                ) : null}
 
-                {alert.policeResponse && (
+                {alert.policeResponse ? (
                   <View style={styles.responseInfo}>
                     <Text style={styles.responseLabel}>Your Response:</Text>
-                    <Text style={styles.responseText}>{alert.policeResponse}</Text>
+                    <Text style={styles.responseText}>{String(alert.policeResponse || '')}</Text>
                   </View>
-                )}
+                ) : null}
               </View>
 
-              {alert.status === 'pending' && (
+              {alert.status === 'pending' ? (
                 <View style={styles.alertActions}>
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.clearButton, { marginRight: 5 }]}
-                    onPress={() => handleRespond(alert, 'clear')}
+                    style={[styles.actionButton, styles.showMapButton]}
+                    onPress={() => handleShowOnMap(alert)}
                   >
-                    <Text style={styles.actionButtonText}>✅ Route Clear</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.busyButton, { marginLeft: 5 }]}
-                    onPress={() => handleRespond(alert, 'busy')}
-                  >
-                    <Text style={styles.actionButtonText}>⚠️ Heavy Traffic</Text>
+                    <Text style={styles.actionButtonText}>🗺️ Show on Map</Text>
                   </TouchableOpacity>
                 </View>
-              )}
+              ) : null}
+
+              {alert.status === 'pending' && selectedAlert?.id === alert.id ? (
+                <View style={styles.alertActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.acceptButton, { marginRight: 5 }]}
+                    onPress={() => handleAccept(alert)}
+                  >
+                    <Text style={styles.actionButtonText}>✅ Accept Route</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.rejectButton, { marginLeft: 5 }]}
+                    onPress={() => handleReject(alert)}
+                  >
+                    <Text style={styles.actionButtonText}>❌ Reject Route</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              {alert.status === 'pending' && selectedAlert?.id !== alert.id ? (
+                <View style={styles.alertActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.acceptButton, { marginRight: 5 }]}
+                    onPress={() => handleAccept(alert)}
+                  >
+                    <Text style={styles.actionButtonText}>✅ Accept</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.rejectButton, { marginLeft: 5 }]}
+                    onPress={() => handleReject(alert)}
+                  >
+                    <Text style={styles.actionButtonText}>❌ Reject</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </View>
           ))
         )}
       </ScrollView>
       )}
+
+      {/* Rejection Message Modal */}
+      <Modal
+        visible={showRejectModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setShowRejectModal(false);
+          setRejectMessage('');
+          setRejectingAlert(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reject Route</Text>
+            <Text style={styles.modalSubtitle}>
+              Enter a message to send to the ambulance driver:
+            </Text>
+            <TextInput
+              style={styles.messageInput}
+              placeholder="e.g., Take another way, not this way"
+              value={rejectMessage}
+              onChangeText={setRejectMessage}
+              multiline
+              numberOfLines={4}
+              placeholderTextColor="#999"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => {
+                  setShowRejectModal(false);
+                  setRejectMessage('');
+                  setRejectingAlert(null);
+                }}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalSubmitButton]}
+                onPress={handleSubmitRejection}
+              >
+                <Text style={[styles.modalButtonText, styles.modalSubmitButtonText]}>Send</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Network Error Modal */}
+      <Modal
+        visible={showNetworkErrorModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowNetworkErrorModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.networkErrorModalContent}>
+            <View style={styles.networkErrorIconContainer}>
+              <Text style={styles.networkErrorIcon}>📡</Text>
+            </View>
+            <Text style={styles.networkErrorTitle}>Network Issue</Text>
+            <Text style={styles.networkErrorMessage}>
+              There is a network issue. Please check your internet connection and try again.
+            </Text>
+            <Text style={styles.networkErrorSubtext}>
+              Make sure you are connected to Wi-Fi or mobile data.
+            </Text>
+            <TouchableOpacity
+              style={styles.networkErrorButton}
+              onPress={() => {
+                setShowNetworkErrorModal(false);
+                // Retry fetching alerts
+                fetchAlerts(false, true);
+              }}
+            >
+              <Text style={styles.networkErrorButtonText}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.networkErrorButton, styles.networkErrorButtonSecondary]}
+              onPress={() => setShowNetworkErrorModal(false)}
+            >
+              <Text style={[styles.networkErrorButtonText, styles.networkErrorButtonTextSecondary]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 };
@@ -1014,50 +1885,111 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    paddingHorizontal: isSmallDevice ? spacing.md : spacing.lg,
+    paddingBottom: spacing.md,
+    ...shadows.lg,
+    borderBottomWidth: 2,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.sm,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    marginRight: spacing.md,
+  },
+  headerEmojiContainer: {
+    width: isSmallDevice ? 50 : isTablet ? 70 : 60,
+    height: isSmallDevice ? 50 : isTablet ? 70 : 60,
+    borderRadius: isSmallDevice ? 25 : isTablet ? 35 : 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    ...shadows.md,
   },
   headerEmoji: {
-    fontSize: 40,
-    marginRight: 12,
+    fontSize: isSmallDevice ? 28 : isTablet ? 40 : 32,
   },
   headerText: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: isSmallDevice ? 18 : isTablet ? 28 : 22,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: colors.white,
+    ...typography.h3,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#E0E0E0',
+    fontSize: isSmallDevice ? 12 : 14,
+    color: 'rgba(255, 255, 255, 0.9)',
     marginTop: 2,
   },
+  headerBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  testAlertButton: {
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    ...shadows.sm,
+    alignSelf: 'flex-start',
+  },
+  testAlertButtonGradient: {
+    paddingHorizontal: isSmallDevice ? spacing.md : spacing.lg,
+    paddingVertical: isSmallDevice ? spacing.xs + 2 : spacing.sm,
+  },
+  testAlertButtonText: {
+    color: colors.white,
+    fontSize: isSmallDevice ? 12 : 14,
+    fontWeight: '600',
+  },
+  clearAlertsButton: {
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    ...shadows.sm,
+    alignSelf: 'flex-start',
+  },
+  clearAlertsButtonGradient: {
+    paddingHorizontal: isSmallDevice ? spacing.md : spacing.lg,
+    paddingVertical: isSmallDevice ? spacing.xs + 2 : spacing.sm,
+  },
+  clearAlertsButtonText: {
+    color: colors.white,
+    fontSize: isSmallDevice ? 12 : 14,
+    fontWeight: '600',
+  },
   logoutButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    ...shadows.sm,
+    minWidth: isSmallDevice ? 50 : 80,
+  },
+  logoutButtonGradient: {
+    paddingHorizontal: isSmallDevice ? spacing.sm : spacing.md,
+    paddingVertical: isSmallDevice ? spacing.xs + 2 : spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   logoutText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: isSmallDevice ? 14 : 14,
+    fontWeight: '700',
   },
   statsBar: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingHorizontal: isSmallDevice ? spacing.md : spacing.lg,
+    paddingVertical: spacing.md,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   statItem: {
@@ -1070,51 +2002,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statNumber: {
-    fontSize: 24,
+    fontSize: isSmallDevice ? 20 : isTablet ? 32 : 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: colors.white,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   statLabel: {
-    fontSize: 12,
-    color: '#E0E0E0',
+    fontSize: isSmallDevice ? 10 : 12,
+    color: 'rgba(255, 255, 255, 0.95)',
     marginTop: 4,
+    fontWeight: '600',
   },
   newAlertBadge: {
     position: 'absolute',
     top: -8,
     right: -12,
     backgroundColor: '#E74C3C',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    borderRadius: 12,
+    minWidth: 22,
+    height: 22,
     paddingHorizontal: 6,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    ...shadows.lg,
   },
   newAlertBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+    color: colors.white,
+    fontSize: isSmallDevice ? 10 : 12,
     fontWeight: 'bold',
   },
   toggleContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: isSmallDevice ? spacing.md : spacing.lg,
+    paddingVertical: spacing.sm,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    gap: 10,
+    gap: spacing.sm,
   },
   toggleButton: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
   },
@@ -1122,8 +2054,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   toggleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: colors.white,
+    fontSize: isSmallDevice ? 12 : 14,
     fontWeight: '600',
   },
   toggleButtonTextActive: {
@@ -1131,7 +2063,7 @@ const styles = StyleSheet.create({
   },
   mapContainer: {
     flex: 1,
-    height: height - 250,
+    height: height - (isSmallDevice ? 240 : isTablet ? 280 : 250),
   },
   map: {
     flex: 1,
@@ -1144,7 +2076,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E9ECEF',
   },
   mapPlaceholderText: {
-    fontSize: 16,
+    fontSize: isSmallDevice ? 14 : 16,
     color: '#7F8C8D',
   },
   policeMarkerContainer: {
@@ -1197,6 +2129,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#E74C3C',
     opacity: 0.4,
   },
+  ambulanceMarkerPulseSelected: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FF6B6B',
+    opacity: 0.5,
+  },
   ambulanceMarker: {
     width: 50,
     height: 50,
@@ -1218,6 +2157,15 @@ const styles = StyleSheet.create({
     borderColor: '#FFD93D',
     borderWidth: 5,
   },
+  ambulanceMarkerSelected: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 6,
+    borderColor: '#FFD93D',
+    backgroundColor: '#FF6B6B',
+    ...shadows.lg,
+  },
   ambulanceIconCircle: {
     width: 42,
     height: 42,
@@ -1233,45 +2181,43 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   alertsContent: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: isSmallDevice ? spacing.md : spacing.lg,
+    paddingBottom: spacing.xl,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: spacing.xxl,
   },
   emptyEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: isSmallDevice ? 56 : isTablet ? 80 : 64,
+    marginBottom: spacing.md,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: isSmallDevice ? 16 : isTablet ? 22 : 18,
     fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
+    color: colors.white,
+    marginBottom: spacing.sm,
+    ...typography.h4,
   },
   emptySubtext: {
-    fontSize: 14,
-    color: '#E0E0E0',
+    fontSize: isSmallDevice ? 12 : 14,
+    color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
+    paddingHorizontal: spacing.lg,
   },
   alertCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: borderRadius.lg,
+    padding: isSmallDevice ? spacing.md : spacing.lg,
+    marginBottom: spacing.md,
+    ...shadows.md,
   },
   alertHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   alertHeaderLeft: {
     flexDirection: 'row',
@@ -1279,23 +2225,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   alertEmoji: {
-    fontSize: 32,
-    marginRight: 12,
+    fontSize: isSmallDevice ? 28 : isTablet ? 36 : 32,
+    marginRight: spacing.md,
   },
   alertDriver: {
-    fontSize: 16,
+    fontSize: isSmallDevice ? 14 : isTablet ? 18 : 16,
     fontWeight: '600',
-    color: '#2C3E50',
+    color: colors.textPrimary,
+    ...typography.h4,
   },
   alertTime: {
-    fontSize: 12,
-    color: '#7F8C8D',
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
   },
   statusPending: {
     backgroundColor: '#F39C12',
@@ -1307,65 +2254,65 @@ const styles = StyleSheet.create({
     backgroundColor: '#95A5A6',
   },
   statusText: {
-    fontSize: 10,
+    fontSize: isSmallDevice ? 9 : 10,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   alertBody: {
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   routeInfo: {
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   routeLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   routeText: {
-    fontSize: 14,
-    color: '#2C3E50',
+    fontSize: isSmallDevice ? 13 : 14,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   distanceInfo: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   distanceLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginRight: 8,
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textSecondary,
+    marginRight: spacing.sm,
   },
   distanceText: {
-    fontSize: 14,
-    color: '#2C3E50',
+    fontSize: isSmallDevice ? 13 : 14,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   areaInfo: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   areaLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginRight: 8,
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textSecondary,
+    marginRight: spacing.sm,
   },
   areaText: {
-    fontSize: 14,
-    color: '#2C3E50',
+    fontSize: isSmallDevice ? 13 : 14,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   trafficInfo: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   trafficLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginRight: 8,
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textSecondary,
+    marginRight: spacing.sm,
   },
   trafficText: {
-    fontSize: 14,
+    fontSize: isSmallDevice ? 13 : 14,
     fontWeight: '600',
   },
   trafficClear: {
@@ -1375,41 +2322,214 @@ const styles = StyleSheet.create({
     color: '#E74C3C',
   },
   responseInfo: {
-    marginTop: 8,
-    padding: 8,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
     backgroundColor: '#F8F9FA',
-    borderRadius: 6,
+    borderRadius: borderRadius.md,
   },
   responseLabel: {
-    fontSize: 12,
-    color: '#7F8C8D',
-    marginBottom: 4,
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   responseText: {
-    fontSize: 14,
-    color: '#2C3E50',
+    fontSize: isSmallDevice ? 13 : 14,
+    color: colors.textPrimary,
   },
   alertActions: {
     flexDirection: 'row',
-    marginTop: 12,
+    marginTop: spacing.md,
   },
   actionButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
   },
-  clearButton: {
+  showMapButton: {
+    backgroundColor: '#3498DB',
+  },
+  acceptButton: {
     backgroundColor: '#27AE60',
   },
-  busyButton: {
+  rejectButton: {
     backgroundColor: '#E74C3C',
   },
   actionButtonText: {
     color: '#FFFFFF',
+    fontSize: isSmallDevice ? 12 : 14,
+    fontWeight: '600',
+  },
+  sourceMarker: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3498DB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    ...shadows.md,
+  },
+  sourceMarkerText: {
+    fontSize: 20,
+  },
+  destinationMarker: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E74C3C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    ...shadows.md,
+  },
+  destinationMarkerText: {
+    fontSize: 20,
+  },
+  coordinatesInfo: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: '#F8F9FA',
+    borderRadius: borderRadius.md,
+  },
+  coordinatesLabel: {
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    fontWeight: '600',
+  },
+  coordinatesText: {
+    fontSize: isSmallDevice ? 11 : 12,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs / 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    width: '100%',
+    maxWidth: 400,
+    ...shadows.lg,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  messageInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: 14,
+    color: colors.textPrimary,
+    textAlignVertical: 'top',
+    minHeight: 100,
+    marginBottom: spacing.md,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#95A5A6',
+  },
+  modalSubmitButton: {
+    backgroundColor: '#E74C3C',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  modalSubmitButtonText: {
+    fontWeight: '700',
+  },
+  networkErrorModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    ...shadows.lg,
+  },
+  networkErrorIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFF3CD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  networkErrorIcon: {
+    fontSize: 40,
+  },
+  networkErrorTitle: {
+    fontSize: isSmallDevice ? 18 : 20,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  networkErrorMessage: {
+    fontSize: isSmallDevice ? 14 : 16,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    lineHeight: 22,
+  },
+  networkErrorSubtext: {
+    fontSize: isSmallDevice ? 12 : 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  networkErrorButton: {
+    width: '100%',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    backgroundColor: '#2E86AB',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  networkErrorButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#2E86AB',
+  },
+  networkErrorButtonText: {
+    color: '#FFFFFF',
+    fontSize: isSmallDevice ? 14 : 16,
+    fontWeight: '600',
+  },
+  networkErrorButtonTextSecondary: {
+    color: '#2E86AB',
   },
 });
 
