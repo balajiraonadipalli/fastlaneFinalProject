@@ -21,6 +21,22 @@ module.exports = (app) => {
         });
       }
 
+      // Validate role-specific fields
+      if (role === 'police' && !badgeNumber) {
+        console.log('❌ Validation failed: Badge Number is required for police');
+        return res.status(400).json({ 
+          success: false,
+          message: 'Badge Number is required for police registration' 
+        });
+      }
+      if (role === 'ambulance' && !licenseNumber) {
+        console.log('❌ Validation failed: License Number is required for ambulance');
+        return res.status(400).json({ 
+          success: false,
+          message: 'Medical License Number is required for ambulance registration' 
+        });
+      }
+
       // Check if user exists
       const existingUser = await User.findOne({ email: email.toLowerCase() });
       if (existingUser) {
@@ -43,12 +59,12 @@ module.exports = (app) => {
         role
       };
 
-      // Add role-specific fields
-      if (role === 'police' && badgeNumber) {
-        userData.badgeNumber = badgeNumber;
+      // Add role-specific fields (required, so always add if role matches)
+      if (role === 'police') {
+        userData.badgeNumber = badgeNumber.trim();
       }
-      if (role === 'ambulance' && licenseNumber) {
-        userData.licenseNumber = licenseNumber;
+      if (role === 'ambulance') {
+        userData.licenseNumber = licenseNumber.trim();
       }
 
       // Create and save user
@@ -59,7 +75,9 @@ module.exports = (app) => {
       console.log('📊 User details:', { 
         id: savedUser._id, 
         email: savedUser.email, 
-        role: savedUser.role 
+        role: savedUser.role,
+        badgeNumber: savedUser.badgeNumber || 'N/A',
+        licenseNumber: savedUser.licenseNumber || 'N/A'
       });
 
       res.status(201).json({ 
@@ -97,27 +115,50 @@ module.exports = (app) => {
         });
       }
 
-      // Find user
-      const user = await User.findOne({ 
+      // Find user - first try with role, then without role to debug
+      let user = await User.findOne({ 
         email: email.toLowerCase(), 
         role 
       });
 
       if (!user) {
-        console.log('❌ User not found:', email);
+        // Try to find user without role filter to see if user exists with different role
+        const userWithoutRole = await User.findOne({ 
+          email: email.toLowerCase()
+        });
+        
+        if (userWithoutRole) {
+          console.log('❌ User found but with different role:', {
+            email: email.toLowerCase(),
+            requestedRole: role,
+            actualRole: userWithoutRole.role
+          });
+          return res.status(400).json({ 
+            success: false,
+            message: `User exists but is registered as ${userWithoutRole.role}, not ${role}. Please login with the correct role.` 
+          });
+        }
+        
+        console.log('❌ User not found:', email.toLowerCase());
         return res.status(400).json({ 
           success: false,
-          message: 'Invalid credentials' 
+          message: 'Invalid credentials - User not found. Please check your email or register first.' 
         });
       }
 
       // Check password
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
-        console.log('❌ Password mismatch for:', email);
+        console.log('❌ Password mismatch for:', email.toLowerCase());
+        console.log('🔍 Debug info:', {
+          email: email.toLowerCase(),
+          role: role,
+          userExists: true,
+          passwordMatch: false
+        });
         return res.status(400).json({ 
           success: false,
-          message: 'Invalid credentials' 
+          message: 'Invalid credentials - Incorrect password. Please check your password.' 
         });
       }
 
