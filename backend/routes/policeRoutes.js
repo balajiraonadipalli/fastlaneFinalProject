@@ -7,7 +7,7 @@ module.exports = (app) => {
   // POST /api/police-alert - Create new police alert when ambulance is nearby
   app.post('/api/police-alert', (req, res) => {
     try {
-      console.log('\n🚨 === BACKEND: RECEIVING POLICE ALERT ===');
+      console.log('\n🚨 === BACKEND: RECEIVING POLICE ALERT (DEBUG MODE) ===');
       console.log('📦 Request body received:');
       console.log('  - driverName:', req.body.driverName);
       console.log('  - location (ambulance current position):', req.body.location);
@@ -16,7 +16,7 @@ module.exports = (app) => {
       console.log('  - startAddress:', req.body.startAddress);
       console.log('  - endAddress:', req.body.endAddress);
       console.log('  - routeCoordinates:', req.body.routeCoordinates ? `${req.body.routeCoordinates.length} points` : 'NULL');
-      
+
       const {
         policeId,
         policeName,
@@ -37,7 +37,7 @@ module.exports = (app) => {
 
       // CRITICAL: Validate that both source and destination addresses are provided
       if (!startAddress || startAddress.trim() === '' || startAddress.toLowerCase() === 'unknown' ||
-          !endAddress || endAddress.trim() === '' || endAddress.toLowerCase() === 'unknown') {
+        !endAddress || endAddress.trim() === '' || endAddress.toLowerCase() === 'unknown') {
         console.error('❌ BACKEND: Rejecting alert - Missing source or destination address');
         console.error('  - startAddress:', startAddress);
         console.error('  - endAddress:', endAddress);
@@ -58,7 +58,7 @@ module.exports = (app) => {
           error: 'location (ambulance current position) is required'
         });
       }
-      
+
       if (!startLocation || !startLocation.latitude || !startLocation.longitude) {
         console.error('❌ BACKEND: Rejecting alert - Missing start location');
         console.error('  - startLocation:', startLocation);
@@ -68,7 +68,7 @@ module.exports = (app) => {
           error: 'startLocation is required'
         });
       }
-      
+
       if (!endLocation || !endLocation.latitude || !endLocation.longitude) {
         console.error('❌ BACKEND: Rejecting alert - Missing end location');
         console.error('  - endLocation:', endLocation);
@@ -161,12 +161,12 @@ module.exports = (app) => {
       const { driverName } = req.query;
       console.log(`\n📥 BACKEND: GET /api/police-alerts called${driverName ? ` (for driver: ${driverName})` : ' (all alerts)'}`);
       console.log(`📥 Query params:`, req.query);
-      
+
       // Filter out old alerts (older than 15 minutes)
       const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
       console.log(`\n📊 BACKEND: GET /api/police-alerts - Total alerts in array: ${policeAlerts.length}`);
       console.log(`⏰ Filtering alerts older than: ${fifteenMinutesAgo.toISOString()}`);
-      
+
       let activeAlerts = policeAlerts.filter(alert => {
         const alertTime = new Date(alert.timestamp || alert.createdAt);
         const isRecent = alertTime > fifteenMinutesAgo;
@@ -175,7 +175,7 @@ module.exports = (app) => {
         }
         return isRecent;
       });
-      
+
       console.log(`📊 After time filter: ${activeAlerts.length} alerts`);
       activeAlerts.forEach(a => {
         console.log(`  Alert #${a.id}: driver="${a.driverName}", status="${a.status}", trafficStatus="${a.trafficStatus || 'none'}", time="${a.timestamp || a.createdAt}"`);
@@ -188,18 +188,18 @@ module.exports = (app) => {
         activeAlerts.forEach(a => {
           console.log(`  Alert #${a.id}: driverName="${a.driverName}", status="${a.status}", trafficStatus="${a.trafficStatus || 'none'}"`);
         });
-        
-        activeAlerts = activeAlerts.filter(alert => 
+
+        activeAlerts = activeAlerts.filter(alert =>
           alert.driverName && alert.driverName.toLowerCase() === driverName.toLowerCase()
         );
-        
+
         console.log(`📊 After driverName filter: ${activeAlerts.length} alerts`);
         activeAlerts.forEach(a => {
           console.log(`  ✅ Alert #${a.id}: status="${a.status}", trafficStatus="${a.trafficStatus || 'none'}", respondedAt="${a.respondedAt || 'none'}", driverName="${a.driverName}"`);
         });
-        
+
         // CRITICAL: Check if we have any acknowledged alerts that should be returned
-        const acknowledgedAlerts = activeAlerts.filter(a => 
+        const acknowledgedAlerts = activeAlerts.filter(a =>
           a.status === 'acknowledged' || a.trafficStatus === 'accepted' || a.trafficStatus === 'rejected'
         );
         if (acknowledgedAlerts.length > 0) {
@@ -220,6 +220,13 @@ module.exports = (app) => {
           return alertTime > fifteenMinutesAgo;
         });
       }
+
+
+      console.log(`\n🔍 BACKEND: DEBUG - Checking alerts before sending:`);
+      activeAlerts.forEach(a => {
+        console.log(`  Alert #${a.id}: type=${typeof a}, keys=${Object.keys(a).join(',')}`);
+        console.log(`  Alert #${a.id} addresses: start="${a.startAddress}", end="${a.endAddress}"`);
+      });
 
       // Sort by timestamp (newest first)
       activeAlerts.sort((a, b) => {
@@ -263,11 +270,11 @@ module.exports = (app) => {
         acknowledgedAt: a.acknowledgedAt || 'none',
         timestamp: a.timestamp || a.createdAt
       })));
-      
+
       // CRITICAL: Log if we're sending responded alerts
       if (driverName) {
-        const hasResponded = activeAlerts.some(a => 
-          a.status === 'acknowledged' || a.status === 'responded' || 
+        const hasResponded = activeAlerts.some(a =>
+          a.status === 'acknowledged' || a.status === 'responded' ||
           a.trafficStatus === 'accepted' || a.trafficStatus === 'rejected'
         );
         if (hasResponded) {
@@ -277,11 +284,11 @@ module.exports = (app) => {
           console.log(`  All alerts have status:`, activeAlerts.map(a => `Alert #${a.id}: ${a.status}`).join(', '));
         }
       }
-      
+
       // If filtering by driverName, log all responded alerts
       if (driverName) {
-        const respondedAlerts = activeAlerts.filter(a => 
-          a.status === 'acknowledged' || a.status === 'responded' || 
+        const respondedAlerts = activeAlerts.filter(a =>
+          a.status === 'acknowledged' || a.status === 'responded' ||
           a.trafficStatus === 'accepted' || a.trafficStatus === 'rejected'
         );
         if (respondedAlerts.length > 0) {
@@ -301,7 +308,7 @@ module.exports = (app) => {
       }
 
       console.log(`\n📤 BACKEND: Sending response with ${activeAlerts.length} alerts${driverName ? ` to driver ${driverName}` : ''}`);
-      
+
       // CRITICAL: Log the exact data being sent in the response
       if (driverName) {
         console.log(`\n🔍 BACKEND: EXACT ALERT DATA BEING SENT TO AMBULANCE:`);
@@ -319,7 +326,7 @@ module.exports = (app) => {
           });
         });
       }
-      
+
       res.json({
         success: true,
         count: activeAlerts.length,
@@ -350,11 +357,11 @@ module.exports = (app) => {
 
       if (alertIndex === -1) {
         console.error(`❌ BACKEND: Alert #${alertId} not found in array!`);
-        console.error(`📊 Current alerts in array (${policeAlerts.length} total):`, policeAlerts.map(a => ({ 
-          id: a.id, 
+        console.error(`📊 Current alerts in array (${policeAlerts.length} total):`, policeAlerts.map(a => ({
+          id: a.id,
           driverName: a.driverName,
           status: a.status,
-          trafficStatus: a.trafficStatus 
+          trafficStatus: a.trafficStatus
         })));
         return res.status(404).json({
           success: false,
@@ -373,7 +380,7 @@ module.exports = (app) => {
         trafficStatus: policeAlerts[alertIndex].trafficStatus,
         driverName: policeAlerts[alertIndex].driverName
       });
-      
+
       if (trafficStatus === 'accepted' || trafficStatus === 'rejected') {
         policeAlerts[alertIndex].status = 'acknowledged';
         policeAlerts[alertIndex].trafficStatus = trafficStatus;
@@ -390,7 +397,7 @@ module.exports = (app) => {
         policeAlerts[alertIndex].respondedAt = new Date().toISOString();
         policeAlerts[alertIndex].acknowledgedAt = new Date().toISOString();
       }
-      
+
       console.log(`📋 After update:`, {
         status: policeAlerts[alertIndex].status,
         trafficStatus: policeAlerts[alertIndex].trafficStatus,
@@ -464,6 +471,33 @@ module.exports = (app) => {
       res.status(500).json({
         success: false,
         message: 'Failed to delete alert',
+        error: error.message
+      });
+    }
+  });
+
+  // DELETE /api/police-alerts - Delete ALL alerts
+  app.delete('/api/police-alerts', (req, res) => {
+    try {
+      console.log('🗑️ BACKEND: Clearing ALL police alerts');
+      const count = policeAlerts.length;
+      policeAlerts = []; // Clear the array
+
+      // Emit event to notify all clients
+      const io = app.get('io');
+      if (io) {
+        io.emit('police:alertsCleared');
+      }
+
+      res.json({
+        success: true,
+        message: `All ${count} alerts cleared successfully`
+      });
+    } catch (error) {
+      console.error('❌ Error clearing alerts:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to clear alerts',
         error: error.message
       });
     }

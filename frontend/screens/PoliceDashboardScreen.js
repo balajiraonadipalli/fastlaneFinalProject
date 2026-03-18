@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  Alert, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
   RefreshControl,
   Dimensions,
   Animated,
@@ -13,11 +13,12 @@ import {
   Vibration,
   Platform,
   TextInput,
-  Modal
+  Modal,
+  Image
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker, PROVIDER_GOOGLE, Polyline, Circle } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Polyline, Circle, Callout } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { API_ENDPOINTS } from '../config/api';
@@ -88,17 +89,17 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           try {
             const { status: existingStatus } = await Notifications.getPermissionsAsync();
             let finalStatus = existingStatus;
-            
+
             if (existingStatus !== 'granted') {
               const { status } = await Notifications.requestPermissionsAsync();
               finalStatus = status;
             }
-            
+
             if (finalStatus !== 'granted') {
               console.log('ℹ️ Notification permissions not granted - will use Alert.alert instead');
               return false;
             }
-            
+
             console.log('✅ Notification permissions granted');
             return true;
           } catch (error) {
@@ -107,9 +108,9 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
             return false;
           }
         };
-        
+
         const hasPermissions = await requestPermissions();
-        
+
         if (hasPermissions && Notifications.addNotificationReceivedListener) {
           try {
             // Set up notification received listener
@@ -178,36 +179,36 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
       // Get route information for notification
       // Only show route if both addresses are available and valid
       let routeInfo = 'Route information not available';
-      if (alert.startAddress && alert.endAddress && 
-          alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
-          alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown') {
+      if (alert.startAddress && alert.endAddress &&
+        alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
+        alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown') {
         // Truncate long addresses for notification
-        const startAddr = alert.startAddress.length > 30 
-          ? alert.startAddress.substring(0, 30) + '...' 
+        const startAddr = alert.startAddress.length > 30
+          ? alert.startAddress.substring(0, 30) + '...'
           : alert.startAddress;
-        const endAddr = alert.endAddress.length > 30 
-          ? alert.endAddress.substring(0, 30) + '...' 
+        const endAddr = alert.endAddress.length > 30
+          ? alert.endAddress.substring(0, 30) + '...'
           : alert.endAddress;
         routeInfo = `${startAddr} → ${endAddr}`;
       } else if (alert.startLocation && alert.endLocation) {
         // Fallback to coordinates if addresses not available
         routeInfo = `From: ${alert.startLocation.latitude?.toFixed(4)}, ${alert.startLocation.longitude?.toFixed(4)} → To: ${alert.endLocation.latitude?.toFixed(4)}, ${alert.endLocation.longitude?.toFixed(4)}`;
       }
-      
+
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '🚨 New Emergency Alert!',
           body: `${alertCount} new ambulance ${alertCount > 1 ? 'alerts' : 'alert'}!\n` +
-                `Driver: ${alert.driverName || 'Unknown'}\n` +
-                `Distance: ${alert.distance ? (typeof alert.distance === 'number' ? `${(alert.distance / 1000).toFixed(2)} km` : alert.distance) : 'Unknown'}\n` +
-                `Route: ${routeInfo}`,
+            `Driver: ${alert.driverName || 'Unknown'}\n` +
+            `Distance: ${alert.distance ? (typeof alert.distance === 'number' ? `${(alert.distance / 1000).toFixed(2)} km` : alert.distance) : 'Unknown'}\n` +
+            `Route: ${routeInfo}`,
           data: { alertId: alert.id, type: 'emergency' },
           sound: true,
           priority: Notifications.AndroidNotificationPriority?.HIGH || 'high',
         },
         trigger: null, // Show immediately
       });
-      
+
       console.log('📱 Local notification sent successfully');
     } catch (error) {
       // Log the actual error for debugging
@@ -225,29 +226,29 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
       console.log('⏸️ Use refresh to fetch again.');
       return; // Exit immediately, don't proceed
     }
-    
+
     // Double-check at the very start (defensive programming)
     if (alertsClearedRef.current && !forceFetch) {
       console.log('⏸️ Double-check: Alerts cleared, aborting fetch');
       return;
     }
-    
+
     try {
       setLoading(true);
       console.log(`🔄 Fetching alerts from: ${API_ENDPOINTS.POLICE_ALERTS}`);
       const response = await fetch(API_ENDPOINTS.POLICE_ALERTS);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log(`📦 Backend response:`, { success: data.success, count: data.count, alertsLength: data.alerts?.length });
-      
+
       if (data.success) {
         let newAlerts = data.alerts || [];
         const previousAlerts = alertsRef.current || [];
-        
+
         // CRITICAL: Filter out dismissed alerts (even if backend has them)
         const dismissedIds = dismissedAlertIdsRef.current;
         if (dismissedIds.size > 0) {
@@ -258,14 +259,14 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
             console.log(`🚫 Filtered out ${beforeFilter - afterFilter} dismissed alerts. Remaining: ${afterFilter}`);
           }
         }
-        
+
         // Sort alerts by timestamp (newest first) - ensures latest alerts appear at the top
         newAlerts.sort((a, b) => {
           const timeA = new Date(a.timestamp || a.createdAt || 0);
           const timeB = new Date(b.timestamp || b.createdAt || 0);
           return timeB - timeA; // Descending order (newest first)
         });
-        
+
         console.log(`📊 Alert comparison:`, {
           newAlerts: newAlerts.length,
           previousAlerts: previousAlerts.length,
@@ -273,23 +274,23 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           newAlertIds: newAlerts.map(a => a.id),
           previousAlertIds: previousAlerts.map(a => a.id)
         });
-        
+
         // Detect new alerts by comparing IDs
         // Only notify if we have previous alerts to compare against (prevents notifying on first load)
         if (showNotification && previousAlerts.length > 0) {
           const newAlertIds = newAlerts.map(a => a.id);
           const previousAlertIds = previousAlerts.map(a => a.id);
           const actuallyNewAlerts = newAlerts.filter(a => !previousAlertIds.includes(a.id));
-          
+
           console.log(`🔍 New alerts detected: ${actuallyNewAlerts.length}`, actuallyNewAlerts.map(a => ({ id: a.id, driver: a.driverName })));
-          
+
           if (actuallyNewAlerts.length > 0) {
             // Show notification for new alerts
             const newAlert = actuallyNewAlerts[0];
             const alertCount = actuallyNewAlerts.length;
-            
+
             console.log(`🔔 Processing ${alertCount} new alert(s)`, actuallyNewAlerts.map(a => a.id));
-            
+
             // Vibrate device
             try {
               if (Platform.OS === 'ios' || Platform.OS === 'android') {
@@ -299,7 +300,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
             } catch (vibError) {
               console.warn('Vibration error:', vibError);
             }
-            
+
             // Send local notification (works even when app is in background)
             try {
               await sendLocalNotification(newAlert, alertCount);
@@ -307,7 +308,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
             } catch (notifError) {
               console.error('Notification error:', notifError);
             }
-            
+
             // Show in-app alert (only if app is in foreground)
             Alert.alert(
               '🚨 New Emergency Alert!',
@@ -321,7 +322,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
               ],
               { cancelable: true }
             );
-            
+
             // Animate badge
             Animated.sequence([
               Animated.timing(badgeAnim, {
@@ -335,14 +336,14 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
                 useNativeDriver: true,
               }),
             ]).start();
-            
+
             setNewAlertsCount(alertCount);
             console.log(`✅ Notification sent for ${alertCount} new alert(s)`);
           } else {
             console.log('ℹ️ No new alerts detected');
           }
         }
-        
+
         // CRITICAL: Check ref BEFORE updating state
         // Even with forceFetch, we need to respect if alerts were cleared
         // However, if forceFetch is true (user pulled to refresh), they want alerts back
@@ -353,7 +354,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           console.log('⏸️ forceFetch:', forceFetch, '- State update blocked');
           return; // Exit early, don't update anything
         }
-        
+
         // If forceFetch is true, user explicitly refreshed - they want alerts back
         // So we allow the update and reset the cleared flag
         if (forceFetch && alertsClearedRef.current) {
@@ -361,7 +362,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           alertsClearedRef.current = false; // Reset since user explicitly wants alerts
           setAlertsCleared(false);
         }
-        
+
         // Safe to update alerts
         console.log('✅ Updating alerts state. Ref cleared:', alertsClearedRef.current, 'forceFetch:', forceFetch);
         setAlerts(newAlerts);
@@ -379,19 +380,19 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
     } catch (error) {
       console.error('❌ Error fetching alerts:', error);
       console.error('Error details:', error.message, error.stack);
-      
+
       // Check if it's a network error
-      const isNetworkError = error.message?.includes('Network request failed') || 
-                            error.message?.includes('Failed to fetch') ||
-                            error.message?.includes('NetworkError') ||
-                            error.message?.includes('timeout') ||
-                            error.name === 'TypeError' && error.message?.includes('fetch');
-      
+      const isNetworkError = error.message?.includes('Network request failed') ||
+        error.message?.includes('Failed to fetch') ||
+        error.message?.includes('NetworkError') ||
+        error.message?.includes('timeout') ||
+        error.name === 'TypeError' && error.message?.includes('fetch');
+
       if (isNetworkError) {
         // Show network error modal
         setShowNetworkErrorModal(true);
       }
-      
+
       // Only clear alerts on error if they weren't manually cleared
       if (!alertsClearedRef.current) {
         setAlerts([]);
@@ -445,14 +446,14 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
     } catch (error) {
       console.error('❌ Error updating police location:', error);
       console.error('Request body:', { userId, userEmail });
-      
+
       // Check if it's a network error
-      const isNetworkError = error.message?.includes('Network request failed') || 
-                            error.message?.includes('Failed to fetch') ||
-                            error.message?.includes('NetworkError') ||
-                            error.message?.includes('timeout') ||
-                            error.name === 'TypeError' && error.message?.includes('fetch');
-      
+      const isNetworkError = error.message?.includes('Network request failed') ||
+        error.message?.includes('Failed to fetch') ||
+        error.message?.includes('NetworkError') ||
+        error.message?.includes('timeout') ||
+        error.name === 'TypeError' && error.message?.includes('fetch');
+
       if (isNetworkError) {
         // Show network error modal
         setShowNetworkErrorModal(true);
@@ -486,7 +487,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           };
           setCurrentLocation(location);
           await updatePoliceLocation(location);
-          
+
           // Center map on current location
           if (mapRef.current) {
             mapRef.current.animateToRegion({
@@ -512,7 +513,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
             };
             setCurrentLocation(location);
             await updatePoliceLocation(location);
-            
+
             // Update map if visible
             if (mapRef.current && showMap) {
               mapRef.current.animateToRegion({
@@ -617,7 +618,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
   useEffect(() => {
     // Initial fetch without notification
     fetchAlerts(false);
-    
+
     // Poll for new alerts every 3 seconds (faster for better responsiveness)
     const interval = setInterval(() => {
       // CRITICAL: Check ref before calling fetchAlerts
@@ -626,12 +627,12 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
         console.log('⏸️ Polling skipped - alerts were cleared. Ref:', alertsClearedRef.current);
         return; // Exit early, don't call fetchAlerts at all
       }
-      
+
       // Only fetch if alerts haven't been cleared
       console.log('🔄 Polling: Fetching alerts (ref cleared:', alertsClearedRef.current, ')');
       fetchAlerts(true); // Show notifications for new alerts
     }, 3000);
-    
+
     pollingIntervalRef.current = interval; // Store interval reference
     console.log('✅ Polling interval started. Interval ID stored in ref.');
 
@@ -654,22 +655,22 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
   // Handle refresh
   const onRefresh = () => {
     setRefreshing(true);
-    
+
     // Check if alerts were previously cleared
     const wasCleared = alertsClearedRef.current;
-    
+
     // If user refreshes, they want to see alerts again
     // But we keep the dismissed list so old alerts don't come back
     if (wasCleared) {
       console.log('🔄 User pulled to refresh after clearing - resetting cleared flag but keeping dismissed list');
       console.log(`🚫 Will filter out ${dismissedAlertIdsRef.current.size} previously dismissed alerts`);
     }
-    
+
     // Reset flags - user explicitly wants to refresh
     setAlertsCleared(false); // Reset state flag
     alertsClearedRef.current = false; // Reset ref flag - user wants to fetch again
     // NOTE: We do NOT clear dismissedAlertIdsRef - dismissed alerts stay dismissed
-    
+
     // Restart polling if it was stopped
     if (!pollingIntervalRef.current) {
       const interval = setInterval(() => {
@@ -683,7 +684,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
       pollingIntervalRef.current = interval;
       console.log('🔄 Polling restarted');
     }
-    
+
     // Force fetch on refresh - but check one more time before updating state
     fetchAlerts(true, true); // Force fetch on refresh
   };
@@ -762,28 +763,28 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
   const handleShowOnMap = (alert) => {
     setSelectedAlert(alert);
     setShowMap(true);
-    
+
     // Show ambulance route: Source (current location) → Destination
     // This helps police understand the route the ambulance is traveling
     if (mapRef.current) {
       // Collect all points to show: ambulance current location, source, destination
       const allPoints = [];
-      
+
       // Add ambulance's current location (if available)
       if (alert.location && alert.location.latitude && alert.location.longitude) {
         allPoints.push(alert.location);
       }
-      
+
       // Add source location (start point)
       if (alert.startLocation && alert.startLocation.latitude && alert.startLocation.longitude) {
         allPoints.push(alert.startLocation);
       }
-      
+
       // Add destination location (end point)
       if (alert.endLocation && alert.endLocation.latitude && alert.endLocation.longitude) {
         allPoints.push(alert.endLocation);
       }
-      
+
       if (allPoints.length > 0) {
         // Calculate bounds to show all points
         const lats = allPoints.map(p => p.latitude);
@@ -792,13 +793,13 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
         const maxLat = Math.max(...lats);
         const minLng = Math.min(...lngs);
         const maxLng = Math.max(...lngs);
-        
+
         // Calculate center and deltas with padding
         const midLat = (minLat + maxLat) / 2;
         const midLng = (minLng + maxLng) / 2;
         const latDelta = Math.max((maxLat - minLat) * 1.8, 0.02); // Add 80% padding
         const lngDelta = Math.max((maxLng - minLng) * 1.8, 0.02); // Add 80% padding
-        
+
         // Animate to show the complete route
         mapRef.current.animateToRegion({
           latitude: midLat,
@@ -806,7 +807,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           latitudeDelta: latDelta,
           longitudeDelta: lngDelta,
         }, 1000);
-        
+
         console.log('🗺️ Showing ambulance route on map:', {
           ambulanceLocation: alert.location ? 'Yes' : 'No',
           source: alert.startLocation ? 'Yes' : 'No',
@@ -839,13 +840,13 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
       endAddress: alert.endAddress,
       timestamp: alert.timestamp || alert.createdAt
     });
-    
+
     Alert.alert(
       'Accept Route',
       'Confirm that this route is acceptable for the ambulance?',
       [
-        { 
-          text: 'Cancel', 
+        {
+          text: 'Cancel',
           style: 'cancel',
           onPress: () => {
             console.log('❌ POLICE: User cancelled accept action');
@@ -862,7 +863,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
             console.log('  - Police Officer:', userName || 'Police Officer');
             console.log('  - Police Station:', alert.policeName || policeStation);
             console.log('  - Driver Name:', alert.driverName);
-            
+
             try {
               const requestBody = {
                 alertId: alert.id,
@@ -870,10 +871,10 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
                 message: 'Route approved. You can proceed.',
                 policeOfficer: userName || 'Police Officer'
               };
-              
+
               console.log('📤 POLICE: Sending POST request to:', API_ENDPOINTS.POLICE_RESPONSE);
               console.log('📤 POLICE: Request body:', JSON.stringify(requestBody, null, 2));
-              
+
               const response = await fetch(API_ENDPOINTS.POLICE_RESPONSE, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -883,10 +884,10 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
               console.log('📥 POLICE: Received response from backend');
               console.log('  - Status:', response.status);
               console.log('  - Status Text:', response.statusText);
-              
+
               const data = await response.json();
               console.log('📥 POLICE: Response data:', JSON.stringify(data, null, 2));
-              
+
               if (data.success) {
                 console.log('✅ POLICE: Backend confirmed success!');
                 console.log('✅ POLICE: Alert updated in backend:', {
@@ -900,9 +901,32 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
                 console.log('  1. WebSocket (if connected)');
                 console.log('  2. Polling (ambulance polls every 2 seconds)');
                 console.log('===== POLICE ACCEPT COMPLETED SUCCESSFULLY =====\n');
-                
+
+                // Immediately update the local alert state with the response data
+                if (data.alert) {
+                  setAlerts(prevAlerts => {
+                    const updatedAlerts = prevAlerts.map(a => {
+                      if (a.id === data.alert.id || a.id === parseInt(data.alert.id)) {
+                        return {
+                          ...a,
+                          status: data.alert.status || 'acknowledged',
+                          trafficStatus: data.alert.trafficStatus || 'accepted',
+                          policeResponse: data.alert.policeResponse || 'Route approved. You can proceed.',
+                          policeOfficer: data.alert.policeOfficer || userName || 'Police Officer',
+                          respondedAt: data.alert.respondedAt || new Date().toISOString(),
+                          acknowledgedAt: data.alert.acknowledgedAt || data.alert.respondedAt || new Date().toISOString()
+                        };
+                      }
+                      return a;
+                    });
+                    alertsRef.current = updatedAlerts;
+                    return updatedAlerts;
+                  });
+                  console.log('✅ POLICE: Local alert state updated immediately with response');
+                }
+
                 Alert.alert('Success', 'Route accepted. Ambulance has been notified.');
-                // Refresh alerts immediately to update counts
+                // Refresh alerts to ensure everything is in sync
                 setTimeout(() => {
                   fetchAlerts(false);
                 }, 500);
@@ -916,14 +940,14 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
               console.error('  - Error message:', error.message);
               console.error('  - Error stack:', error.stack);
               console.log('===== POLICE ACCEPT ERROR =====\n');
-              
+
               // Check if it's a network error
-              const isNetworkError = error.message?.includes('Network request failed') || 
-                                    error.message?.includes('Failed to fetch') ||
-                                    error.message?.includes('NetworkError') ||
-                                    error.message?.includes('timeout') ||
-                                    error.name === 'TypeError' && error.message?.includes('fetch');
-              
+              const isNetworkError = error.message?.includes('Network request failed') ||
+                error.message?.includes('Failed to fetch') ||
+                error.message?.includes('NetworkError') ||
+                error.message?.includes('timeout') ||
+                error.name === 'TypeError' && error.message?.includes('fetch');
+
               if (isNetworkError) {
                 setShowNetworkErrorModal(true);
               } else {
@@ -946,7 +970,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
   // Submit rejection with custom message
   const handleSubmitRejection = async () => {
     if (!rejectingAlert) return;
-    
+
     if (!rejectMessage.trim()) {
       Alert.alert('Error', 'Please enter a rejection message');
       return;
@@ -966,11 +990,34 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
 
       const data = await response.json();
       if (data.success) {
+        // Immediately update the local alert state with the response data
+        if (data.alert) {
+          setAlerts(prevAlerts => {
+            const updatedAlerts = prevAlerts.map(a => {
+              if (a.id === data.alert.id || a.id === parseInt(data.alert.id)) {
+                return {
+                  ...a,
+                  status: data.alert.status || 'acknowledged',
+                  trafficStatus: data.alert.trafficStatus || 'rejected',
+                  policeResponse: data.alert.policeResponse || rejectMessage.trim(),
+                  policeOfficer: data.alert.policeOfficer || userName || 'Police Officer',
+                  respondedAt: data.alert.respondedAt || new Date().toISOString(),
+                  acknowledgedAt: data.alert.acknowledgedAt || data.alert.respondedAt || new Date().toISOString()
+                };
+              }
+              return a;
+            });
+            alertsRef.current = updatedAlerts;
+            return updatedAlerts;
+          });
+          console.log('✅ POLICE: Local alert state updated immediately with rejection response');
+        }
+
         Alert.alert('Success', 'Rejection message sent to ambulance driver');
         setShowRejectModal(false);
         setRejectMessage('');
         setRejectingAlert(null);
-        // Refresh alerts immediately to update counts
+        // Refresh alerts to ensure everything is in sync
         setTimeout(() => {
           fetchAlerts(false);
         }, 500);
@@ -979,14 +1026,14 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Error sending rejection:', error);
-      
+
       // Check if it's a network error
-      const isNetworkError = error.message?.includes('Network request failed') || 
-                            error.message?.includes('Failed to fetch') ||
-                            error.message?.includes('NetworkError') ||
-                            error.message?.includes('timeout') ||
-                            error.name === 'TypeError' && error.message?.includes('fetch');
-      
+      const isNetworkError = error.message?.includes('Network request failed') ||
+        error.message?.includes('Failed to fetch') ||
+        error.message?.includes('NetworkError') ||
+        error.message?.includes('timeout') ||
+        error.name === 'TypeError' && error.message?.includes('fetch');
+
       if (isNetworkError) {
         setShowNetworkErrorModal(true);
       } else {
@@ -1075,7 +1122,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
     const then = new Date(timestamp);
     const diffMs = now - then;
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins} min ago`;
     const diffHours = Math.floor(diffMins / 60);
@@ -1093,7 +1140,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
 
     Alert.alert(
       'Clear All Alerts',
-      `Are you sure you want to clear all ${alerts.length} alert(s)? This action cannot be undone.`,
+      `Are you sure you want to clear all ${alerts.length} alert(s) from the backend? This will remove alerts for EVERYONE.`,
       [
         {
           text: 'Cancel',
@@ -1102,39 +1149,56 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
         {
           text: 'Clear All',
           style: 'destructive',
-          onPress: () => {
-            // CRITICAL: Mark all current alerts as dismissed
-            // This prevents them from being re-added even if backend still has them
-            const currentAlertIds = alerts.map(a => a.id).filter(id => id != null);
-            currentAlertIds.forEach(id => {
-              dismissedAlertIdsRef.current.add(id);
-            });
-            console.log(`🚫 Marked ${currentAlertIds.length} alerts as dismissed. Dismissed IDs:`, Array.from(dismissedAlertIdsRef.current));
-            
-            // Set ref FIRST (before state) for immediate effect
-            alertsClearedRef.current = true;
-            setAlertsCleared(true); // Set state flag
-            
-            // Stop the polling interval completely
-            if (pollingIntervalRef.current) {
-              clearInterval(pollingIntervalRef.current);
-              pollingIntervalRef.current = null;
-              console.log('🛑 Polling interval stopped');
+          onPress: async () => {
+            try {
+              // 1. Call Backend to clear alerts
+              console.log('🗑️ Requesting backend to clear all alerts...');
+              const response = await fetch(API_ENDPOINTS.POLICE_ALERTS_CLEAR, {
+                method: 'DELETE',
+              });
+
+              const data = await response.json();
+
+              if (response.ok && data.success) {
+                // 2. If backend success, clear local state
+                console.log('✅ Backend confirmed alerts cleared:', data.message);
+
+                // Update Refs
+                const currentAlertIds = alerts.map(a => a.id).filter(id => id != null);
+                currentAlertIds.forEach(id => {
+                  dismissedAlertIdsRef.current.add(id);
+                });
+
+                alertsClearedRef.current = true;
+                setAlertsCleared(true);
+
+                // Stop polling (optional, but good for "cleared" state)
+                // if (pollingIntervalRef.current) {
+                //   clearInterval(pollingIntervalRef.current);
+                //   pollingIntervalRef.current = null;
+                // } 
+                // actually, keeping polling might be better to see if new alerts come in, 
+                // but for now let's stick to existing logic or maybe allow polling to continue 
+                // so if NEW alerts come, they show up. 
+                // The user said "clear all alerts... so it will update". 
+                // If we stop polling, we won't see new ones. 
+                // Let's NOT stop polling, but just clear the current list.
+
+                // Clear local state
+                setAlerts([]);
+                alertsRef.current = [];
+                setNewAlertsCount(0);
+                setLastAlertCount(0);
+                setSelectedAlert(null);
+
+                Alert.alert('Success', 'All alerts have been cleared from backend and frontend.');
+              } else {
+                throw new Error(data.message || 'Failed to clear alerts on backend');
+              }
+            } catch (error) {
+              console.error('❌ Error clearing alerts:', error);
+              Alert.alert('Error', 'Failed to clear alerts from backend. Please check connection.');
             }
-            
-            // Clear local state
-            setAlerts([]);
-            alertsRef.current = [];
-            setNewAlertsCount(0);
-            setLastAlertCount(0);
-            setSelectedAlert(null);
-            
-            console.log('✅ All alerts cleared. Ref set to:', alertsClearedRef.current);
-            console.log('✅ Polling stopped. Pull down to refresh to restart.');
-            console.log(`🚫 Dismissed alerts will be filtered out. Total dismissed: ${dismissedAlertIdsRef.current.size}`);
-            
-            // Show success message
-            Alert.alert('Success', 'All alerts have been cleared. Pull down to refresh if you want to fetch alerts again.');
           }
         }
       ]
@@ -1200,7 +1264,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
               <Text style={styles.testAlertButtonText}>🧪 Create Test Alert</Text>
             </LinearGradient>
           </TouchableOpacity>
-          
+
           {alerts.length > 0 && (
             <TouchableOpacity
               style={styles.clearAlertsButton}
@@ -1266,7 +1330,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
       </View>
 
       {/* Toggle between Map and List */}
-      <Animated.View 
+      <Animated.View
         style={[
           styles.toggleContainer,
           {
@@ -1284,9 +1348,9 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           onPress={() => setShowMap(false)}
           activeOpacity={0.7}
         >
-          <Animated.Text 
+          <Animated.Text
             style={[
-              styles.toggleButtonText, 
+              styles.toggleButtonText,
               !showMap && styles.toggleButtonTextActive,
               {
                 transform: [{
@@ -1303,9 +1367,9 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
           onPress={() => setShowMap(true)}
           activeOpacity={0.7}
         >
-          <Animated.Text 
+          <Animated.Text
             style={[
-              styles.toggleButtonText, 
+              styles.toggleButtonText,
               showMap && styles.toggleButtonTextActive,
               {
                 transform: [{
@@ -1321,7 +1385,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
 
       {/* Map View */}
       {showMap ? (
-        <Animated.View 
+        <Animated.View
           style={[
             styles.mapContainer,
             {
@@ -1396,7 +1460,7 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
                 anchor={{ x: 0.5, y: 0.5 }}
                 tracksViewChanges={false}
               >
-                <Animated.View 
+                <Animated.View
                   style={[
                     styles.policeMarkerContainer,
                     {
@@ -1412,110 +1476,27 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
               </Marker>
 
               {/* Ambulance markers from alerts - Group by driverName to show only one circle per ambulance */}
-              {(() => {
-                // Group alerts by driverName to avoid duplicate circles for same ambulance
-                const uniqueAmbulances = new Map();
-                alerts.forEach(alert => {
-                  if (!alert.location || !alert.location.latitude || !alert.location.longitude) {
-                    return;
-                  }
-                  const driverName = alert.driverName || 'Unknown';
-                  // Use the most recent alert for each ambulance
-                  if (!uniqueAmbulances.has(driverName) || 
-                      new Date(alert.timestamp || alert.createdAt) > new Date(uniqueAmbulances.get(driverName).timestamp || uniqueAmbulances.get(driverName).createdAt)) {
-                    uniqueAmbulances.set(driverName, alert);
-                  }
-                });
-                
-                return Array.from(uniqueAmbulances.values()).map((alert) => {
-                  const isSelected = selectedAlert?.id === alert.id;
-                  const roundedLat = Math.round(alert.location.latitude * 100000) / 100000;
-                  const roundedLng = Math.round(alert.location.longitude * 100000) / 100000;
-                  
-                  return (
-                    <React.Fragment key={`ambulance-${String(alert.driverName || alert.id || 'unknown')}`}>
-                      {/* 1 km red radius circle around ambulance - Only one per ambulance */}
-                      <Circle
-                        center={{
-                          latitude: roundedLat,
-                          longitude: roundedLng,
-                        }}
-                        radius={1000} // 1 km in meters
-                        fillColor="rgba(231, 76, 60, 0.25)"
-                        strokeColor="#E74C3C"
-                        strokeWidth={3}
-                        zIndex={1}
-                        tracksViewChanges={false}
-                      />
-                      <Marker
-                        coordinate={{
-                          latitude: alert.location.latitude,
-                          longitude: alert.location.longitude,
-                        }}
-                        title={`Ambulance: ${String(alert.driverName || 'Unknown')}`}
-                        description={`Distance: ${alert.distance ? (typeof alert.distance === 'number' ? `${(alert.distance / 1000).toFixed(2)} km` : String(alert.distance || 'Unknown')) : 'Unknown'}`}
-                        anchor={{ x: 0.5, y: 0.5 }}
-                        tracksViewChanges={false}
-                      >
-                        <Animated.View
-                          style={[
-                            styles.ambulanceMarkerContainer,
-                            {
-                              transform: [{ 
-                                scale: isSelected ? markerScaleAnim.interpolate({
-                                  inputRange: [0, 1],
-                                  outputRange: [1.2, 1.3]
-                                }) : markerScaleAnim 
-                              }],
-                            },
-                          ]}
-                        >
-                          <View style={[
-                            styles.ambulanceMarkerPulse,
-                            isSelected && styles.ambulanceMarkerPulseSelected
-                          ]} />
-                          <View style={[
-                            styles.ambulanceMarker,
-                            alert.status === 'pending' && styles.ambulanceMarkerPending,
-                            isSelected && styles.ambulanceMarkerSelected,
-                          ]}>
-                            <View style={styles.ambulanceIconCircle}>
-                              <Text style={styles.ambulanceMarkerEmoji}>🚑</Text>
-                            </View>
-                          </View>
-                        </Animated.View>
-                      </Marker>
-                    </React.Fragment>
-                  );
-                });
-              })()}
-
-              {/* Route polylines from alerts - Show route clearly when selected */}
+              {/* Ambulance locations from alerts */}
+              {/* Route Polylines - Draw these first so they are under markers */}
               {alerts.map((alert) => {
-                // Show route only if this alert is selected (when "Show on Map" is clicked)
-                const shouldShowRoute = selectedAlert?.id === alert.id;
-                
-                if (!shouldShowRoute) {
-                  return null;
-                }
-                
-                // Show route if routeCoordinates exist
+                if (selectedAlert?.id !== alert.id) return null; // Only show route for selected alert
+
+                // 1. Draw Polyline if routeCoordinates exist
                 if (alert.routeCoordinates && Array.isArray(alert.routeCoordinates) && alert.routeCoordinates.length >= 2) {
                   return (
                     <Polyline
                       key={`route-${alert.id}`}
                       coordinates={alert.routeCoordinates}
-                      strokeColor="#E74C3C" // Red color for ambulance route
-                      strokeWidth={6} // Thicker line for better visibility
-                      lineDashPattern={[15, 10]} // More visible dash pattern
+                      strokeColor="#E74C3C"
+                      strokeWidth={6}
+                      lineDashPattern={[15, 10]}
                       lineCap="round"
                       lineJoin="round"
                       zIndex={100}
                     />
                   );
                 }
-                
-                // If no routeCoordinates but we have start and end locations, draw a straight line
+                // 2. Fallback: Straight line if only start/end exist
                 if (alert.startLocation && alert.endLocation) {
                   return (
                     <Polyline
@@ -1524,55 +1505,107 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
                       strokeColor="#E74C3C"
                       strokeWidth={4}
                       lineDashPattern={[10, 5]}
-                      lineCap="round"
-                      lineJoin="round"
                       zIndex={100}
                     />
                   );
                 }
-                
                 return null;
               })}
 
-              {/* Source and Destination markers for selected alert - Always show when alert is selected */}
-              {selectedAlert && selectedAlert.startLocation && (
-                <Marker
-                  coordinate={{
-                    latitude: selectedAlert.startLocation.latitude,
-                    longitude: selectedAlert.startLocation.longitude,
-                  }}
-                  title="📍 Source (Ambulance Starting Point)"
-                  description={String(selectedAlert.startAddress || 'Ambulance Starting Location')}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
-                  zIndex={200}
-                >
-                  <View style={styles.sourceMarker}>
-                    <Text style={styles.sourceMarkerText}>📍</Text>
-                  </View>
-                </Marker>
-              )}
+              {/* Ambulance Markers & Radius */}
+              {alerts.map((alert) => {
+                if (!alert.location || !alert.location.latitude || !alert.location.longitude) return null;
 
-              {selectedAlert && selectedAlert.endLocation && (
-                <Marker
-                  coordinate={{
-                    latitude: selectedAlert.endLocation.latitude,
-                    longitude: selectedAlert.endLocation.longitude,
-                  }}
-                  title="🎯 Destination (Ambulance Destination)"
-                  description={String(selectedAlert.endAddress || 'Ambulance Destination')}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
-                  zIndex={200}
-                >
-                  <View style={styles.destinationMarker}>
-                    <Text style={styles.destinationMarkerText}>🎯</Text>
-                  </View>
-                </Marker>
-              )}
+                const roundedLat = Math.round(alert.location.latitude * 100000) / 100000;
+                const roundedLng = Math.round(alert.location.longitude * 100000) / 100000;
+
+                return (
+                  <React.Fragment key={`ambulance-group-${alert.id}`}>
+                    {/* Radius Circle */}
+                    <Circle
+                      center={{
+                        latitude: roundedLat,
+                        longitude: roundedLng,
+                      }}
+                      radius={1000} // 1 km radius
+                      fillColor="rgba(231, 76, 60, 0.2)"
+                      strokeColor="rgba(231, 76, 60, 0.5)"
+                      strokeWidth={2}
+                      zIndex={1}
+                    />
+
+                    {/* Ambulance Marker with Image */}
+                    <Marker
+                      key={`ambulance-${alert.id}-${alert.location.latitude}`}
+                      coordinate={{
+                        latitude: alert.location.latitude,
+                        longitude: alert.location.longitude,
+                      }}
+                      title={`Ambulance: ${alert.driverName || 'Unknown'}`}
+                      description={`Distance: ${(alert.distance ? (alert.distance / 1000).toFixed(2) : '0')} km`}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      zIndex={999}
+                      tracksViewChanges={true}
+                      onPress={() => handleShowOnMap(alert)} // Ensure selecting marker triggers selection
+                    >
+                      <Image
+                        source={require('../assets/ambulancepng.png')}
+                        style={{ width: 50, height: 50, resizeMode: 'contain' }}
+                      />
+
+                      <Callout tooltip>
+                        <View style={styles.markerCallout}>
+                          <Text style={styles.markerCalloutText}>{alert.driverName || 'Ambulance'}</Text>
+                        </View>
+                      </Callout>
+                    </Marker>
+                  </React.Fragment>
+                );
+              })}
+
+              {/* Source and Destination markers for selected alert - Always show when alert is selected */}
+              {
+                selectedAlert && selectedAlert.startLocation && (
+                  <Marker
+                    coordinate={{
+                      latitude: selectedAlert.startLocation.latitude,
+                      longitude: selectedAlert.startLocation.longitude,
+                    }}
+                    title="📍 Source (Ambulance Starting Point)"
+                    description={String(selectedAlert.startAddress || 'Ambulance Starting Location')}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                    tracksViewChanges={false}
+                    zIndex={200}
+                  >
+                    <View style={styles.sourceMarker}>
+                      <Text style={styles.sourceMarkerText}>📍</Text>
+                    </View>
+                  </Marker>
+                )
+              }
+
+              {
+                selectedAlert && selectedAlert.endLocation && (
+                  <Marker
+                    coordinate={{
+                      latitude: selectedAlert.endLocation.latitude,
+                      longitude: selectedAlert.endLocation.longitude,
+                    }}
+                    title="🎯 Destination (Ambulance Destination)"
+                    description={String(selectedAlert.endAddress || 'Ambulance Destination')}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                    tracksViewChanges={false}
+                    zIndex={200}
+                  >
+                    <View style={styles.destinationMarker}>
+                      <Text style={styles.destinationMarkerText}>🎯</Text>
+                    </View>
+                  </Marker>
+                )
+              }
             </MapView>
           ) : (
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.mapPlaceholder,
                 {
@@ -1592,202 +1625,207 @@ const PoliceDashboardScreen = ({ route, navigation }) => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-        {loading && alerts.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading alerts...</Text>
-          </View>
-        ) : alerts.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>📭</Text>
-            <Text style={styles.emptyText}>No active alerts</Text>
-            <Text style={styles.emptySubtext}>
-              You will be notified when an ambulance enters your area
-            </Text>
-          </View>
-        ) : (
-          alerts.map((alert) => (
-            <View key={String(alert.id || alert.timestamp || Math.random())} style={styles.alertCard}>
-              <View style={styles.alertHeader}>
-                <View style={styles.alertHeaderLeft}>
-                  <Text style={styles.alertEmoji}>🚑</Text>
-                  <View>
-                    <Text style={styles.alertDriver}>
-                      Driver: {alert.driverName || 'Unknown'}
-                    </Text>
-                    <Text style={styles.alertTime}>
-                      {formatTime(alert.timestamp)} • {getTimeAgo(alert.timestamp)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={[
-                  styles.statusBadge,
-                  alert.status === 'pending' ? styles.statusPending :
-                  alert.status === 'responded' ? styles.statusResponded :
-                  styles.statusCleared
-                ]}>
-                  <Text style={styles.statusText}>
-                    {alert.status === 'pending' ? 'PENDING' :
-                     alert.status === 'responded' ? 'RESPONDED' : 'CLEARED'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.alertBody}>
-                {/* Show route addresses if available, otherwise show coordinates */}
-                {(() => {
-                  const hasValidAddresses = alert.startAddress && alert.endAddress && 
-                    alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
-                    alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown';
-                  
-                  if (hasValidAddresses) {
-                    return (
-                      <View style={styles.routeInfo}>
-                        <Text style={styles.routeLabel}>Route:</Text>
-                        <Text style={styles.routeText}>
-                          {alert.startAddress} → {alert.endAddress}
-                        </Text>
-                      </View>
-                    );
-                  } else if (alert.startLocation || alert.endLocation) {
-                    return (
-                      <View style={styles.routeInfo}>
-                        <Text style={styles.routeLabel}>Route (Coordinates):</Text>
-                        {alert.startLocation && (
-                          <Text style={styles.routeText}>
-                            📍 From: {alert.startLocation.latitude.toFixed(6)}, {alert.startLocation.longitude.toFixed(6)}
-                          </Text>
-                        )}
-                        {alert.endLocation && (
-                          <Text style={styles.routeText}>
-                            🎯 To: {alert.endLocation.latitude.toFixed(6)}, {alert.endLocation.longitude.toFixed(6)}
-                          </Text>
-                        )}
-                      </View>
-                    );
-                  } else {
-                    return (
-                      <View style={styles.routeInfo}>
-                        <Text style={styles.routeLabel}>Route:</Text>
-                        <Text style={styles.routeText}>Location information not available</Text>
-                      </View>
-                    );
-                  }
-                })()}
-
-                {/* Show additional coordinates if addresses are available (for reference) */}
-                {(() => {
-                  const hasValidAddresses = alert.startAddress && alert.endAddress && 
-                    alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
-                    alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown';
-                  const hasLocations = alert.startLocation || alert.endLocation;
-                  
-                  if (hasValidAddresses && hasLocations) {
-                    return (
-                      <View style={styles.coordinatesInfo}>
-                        <Text style={styles.coordinatesLabel}>Coordinates:</Text>
-                        {alert.startLocation && (
-                          <Text style={styles.coordinatesText}>
-                            📍 Source: {alert.startLocation.latitude.toFixed(6)}, {alert.startLocation.longitude.toFixed(6)}
-                          </Text>
-                        )}
-                        {alert.endLocation && (
-                          <Text style={styles.coordinatesText}>
-                            🎯 Destination: {alert.endLocation.latitude.toFixed(6)}, {alert.endLocation.longitude.toFixed(6)}
-                          </Text>
-                        )}
-                      </View>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {alert.distance ? (
-                  <View style={styles.distanceInfo}>
-                    <Text style={styles.distanceLabel}>Distance:</Text>
-                    <Text style={styles.distanceText}>
-                      {typeof alert.distance === 'number' 
-                        ? `${(alert.distance / 1000).toFixed(2)} km`
-                        : String(alert.distance || 'Unknown')}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {alert.area ? (
-                  <View style={styles.areaInfo}>
-                    <Text style={styles.areaLabel}>Area:</Text>
-                    <Text style={styles.areaText}>{String(alert.area || 'Unknown')}</Text>
-                  </View>
-                ) : null}
-
-                {alert.trafficStatus ? (
-                  <View style={styles.trafficInfo}>
-                    <Text style={styles.trafficLabel}>Traffic Status:</Text>
-                    <Text style={[
-                      styles.trafficText,
-                      alert.trafficStatus === 'clear' ? styles.trafficClear :
-                      styles.trafficBusy
-                    ]}>
-                      {alert.trafficStatus === 'clear' ? '✅ CLEAR' : '⚠️ BUSY'}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {alert.policeResponse ? (
-                  <View style={styles.responseInfo}>
-                    <Text style={styles.responseLabel}>Your Response:</Text>
-                    <Text style={styles.responseText}>{String(alert.policeResponse || '')}</Text>
-                  </View>
-                ) : null}
-              </View>
-
-              {alert.status === 'pending' ? (
-                <View style={styles.alertActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.showMapButton]}
-                    onPress={() => handleShowOnMap(alert)}
-                  >
-                    <Text style={styles.actionButtonText}>🗺️ Show on Map</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              {alert.status === 'pending' && selectedAlert?.id === alert.id ? (
-                <View style={styles.alertActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.acceptButton, { marginRight: 5 }]}
-                    onPress={() => handleAccept(alert)}
-                  >
-                    <Text style={styles.actionButtonText}>✅ Accept Route</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.rejectButton, { marginLeft: 5 }]}
-                    onPress={() => handleReject(alert)}
-                  >
-                    <Text style={styles.actionButtonText}>❌ Reject Route</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              {alert.status === 'pending' && selectedAlert?.id !== alert.id ? (
-                <View style={styles.alertActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.acceptButton, { marginRight: 5 }]}
-                    onPress={() => handleAccept(alert)}
-                  >
-                    <Text style={styles.actionButtonText}>✅ Accept</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.rejectButton, { marginLeft: 5 }]}
-                    onPress={() => handleReject(alert)}
-                  >
-                    <Text style={styles.actionButtonText}>❌ Reject</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
+          {loading && alerts.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Loading alerts...</Text>
             </View>
-          ))
-        )}
-      </ScrollView>
+          ) : alerts.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>📭</Text>
+              <Text style={styles.emptyText}>No active alerts</Text>
+              <Text style={styles.emptySubtext}>
+                You will be notified when an ambulance enters your area
+              </Text>
+            </View>
+          ) : (
+            alerts.map((alert) => (
+              <View key={String(alert.id || alert.timestamp || Math.random())} style={styles.alertCard}>
+                <View style={styles.alertHeader}>
+                  <View style={styles.alertHeaderLeft}>
+                    <Text style={styles.alertEmoji}>🚑</Text>
+                    <View>
+                      <Text style={styles.alertDriver}>
+                        Driver: {alert.driverName || 'Unknown'}
+                      </Text>
+                      <Text style={styles.alertTime}>
+                        {formatTime(alert.timestamp)} • {getTimeAgo(alert.timestamp)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[
+                    styles.statusBadge,
+                    alert.status === 'pending' ? styles.statusPending :
+                      alert.status === 'responded' ? styles.statusResponded :
+                        styles.statusCleared
+                  ]}>
+                    <Text style={styles.statusText}>
+                      {alert.status === 'pending' ? 'PENDING' :
+                        alert.status === 'responded' ? 'RESPONDED' : 'CLEARED'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.alertBody}>
+                  {/* Show route addresses if available, otherwise show coordinates */}
+                  {(() => {
+                    console.log(`DEBUG: Rendering alert ${alert.id} - Start: '${alert.startAddress}' End: '${alert.endAddress}'`);
+                    const hasValidAddresses = alert.startAddress && alert.endAddress &&
+                      alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
+                      alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown';
+
+                    if (hasValidAddresses) {
+                      return (
+                        <View style={styles.routeInfo}>
+                          <Text style={styles.routeLabel}>Route:</Text>
+                          <Text style={styles.routeText}>
+                            {alert.startAddress} → {alert.endAddress}
+                          </Text>
+                        </View>
+                      );
+                    } else if (alert.startLocation || alert.endLocation) {
+                      return (
+                        <View style={styles.routeInfo}>
+                          <Text style={styles.routeLabel}>Route (Coordinates):</Text>
+                          {alert.startLocation && (
+                            <Text style={styles.routeText}>
+                              📍 From: {alert.startLocation.latitude.toFixed(6)}, {alert.startLocation.longitude.toFixed(6)}
+                            </Text>
+                          )}
+                          {alert.endLocation && (
+                            <Text style={styles.routeText}>
+                              🎯 To: {alert.endLocation.latitude.toFixed(6)}, {alert.endLocation.longitude.toFixed(6)}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    } else {
+                      return (
+                        <View style={styles.routeInfo}>
+                          <Text style={styles.routeLabel}>Route:</Text>
+                          <Text style={styles.routeText}>Location information not available</Text>
+                        </View>
+                      );
+                    }
+                  })()}
+
+                  {/* Show additional coordinates if addresses are available (for reference) */}
+                  {(() => {
+                    const hasValidAddresses = alert.startAddress && alert.endAddress &&
+                      alert.startAddress.trim() !== '' && alert.endAddress.trim() !== '' &&
+                      alert.startAddress.toLowerCase() !== 'unknown' && alert.endAddress.toLowerCase() !== 'unknown';
+                    const hasLocations = alert.startLocation || alert.endLocation;
+
+                    if (hasValidAddresses && hasLocations) {
+                      return (
+                        <View style={styles.coordinatesInfo}>
+                          <Text style={styles.coordinatesLabel}>Coordinates:</Text>
+                          {alert.startLocation && (
+                            <Text style={styles.coordinatesText}>
+                              📍 Source: {alert.startLocation.latitude.toFixed(6)}, {alert.startLocation.longitude.toFixed(6)}
+                            </Text>
+                          )}
+                          {alert.endLocation && (
+                            <Text style={styles.coordinatesText}>
+                              🎯 Destination: {alert.endLocation.latitude.toFixed(6)}, {alert.endLocation.longitude.toFixed(6)}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {alert.distance ? (
+                    <View style={styles.distanceInfo}>
+                      <Text style={styles.distanceLabel}>Distance:</Text>
+                      <Text style={styles.distanceText}>
+                        {typeof alert.distance === 'number'
+                          ? `${(alert.distance / 1000).toFixed(2)} km`
+                          : String(alert.distance || 'Unknown')}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {alert.area ? (
+                    <View style={styles.areaInfo}>
+                      <Text style={styles.areaLabel}>Area:</Text>
+                      <Text style={styles.areaText}>{String(alert.area || 'Unknown')}</Text>
+                    </View>
+                  ) : null}
+
+                  {alert.trafficStatus ? (
+                    <View style={styles.trafficInfo}>
+                      <Text style={styles.trafficLabel}>Traffic Status:</Text>
+                      <Text style={[
+                        styles.trafficText,
+                        alert.trafficStatus === 'clear' || alert.trafficStatus === 'accepted' ? styles.trafficClear :
+                          alert.trafficStatus === 'rejected' ? styles.trafficBusy :
+                            styles.trafficBusy
+                      ]}>
+                        {alert.trafficStatus === 'clear' ? '✅ CLEAR' :
+                          alert.trafficStatus === 'accepted' ? '✅ ACCEPTED' :
+                            alert.trafficStatus === 'rejected' ? '❌ REJECTED' :
+                              '⚠️ BUSY'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {alert.policeResponse ? (
+                    <View style={styles.responseInfo}>
+                      <Text style={styles.responseLabel}>Your Response:</Text>
+                      <Text style={styles.responseText}>{String(alert.policeResponse || '')}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {alert.status === 'pending' ? (
+                  <View style={styles.alertActions}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.showMapButton]}
+                      onPress={() => handleShowOnMap(alert)}
+                    >
+                      <Text style={styles.actionButtonText}>🗺️ Show on Map</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {alert.status === 'pending' && selectedAlert?.id === alert.id ? (
+                  <View style={styles.alertActions}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.acceptButton, { marginRight: 5 }]}
+                      onPress={() => handleAccept(alert)}
+                    >
+                      <Text style={styles.actionButtonText}>✅ Accept Route</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.rejectButton, { marginLeft: 5 }]}
+                      onPress={() => handleReject(alert)}
+                    >
+                      <Text style={styles.actionButtonText}>❌ Reject Route</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {alert.status === 'pending' && selectedAlert?.id !== alert.id ? (
+                  <View style={styles.alertActions}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.acceptButton, { marginRight: 5 }]}
+                      onPress={() => handleAccept(alert)}
+                    >
+                      <Text style={styles.actionButtonText}>✅ Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.rejectButton, { marginLeft: 5 }]}
+                      onPress={() => handleReject(alert)}
+                    >
+                      <Text style={styles.actionButtonText}>❌ Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+            ))
+          )}
+        </ScrollView>
       )}
 
       {/* Rejection Message Modal */}
@@ -2167,14 +2205,23 @@ const styles = StyleSheet.create({
     ...shadows.lg,
   },
   ambulanceIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF', // Add white background to make emoji pop
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E74C3C', // Red border for ambulance
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   ambulanceMarkerEmoji: {
-    fontSize: 28,
+    fontSize: 32,
     textAlign: 'center',
   },
   alertsContainer: {
@@ -2446,6 +2493,20 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  markerCallout: {
+    backgroundColor: '#FFFFFF',
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E74C3C',
+    elevation: 5,
+    marginBottom: 5,
+  },
+  markerCalloutText: {
+    fontWeight: 'bold',
+    color: '#E74C3C',
+    fontSize: 12,
   },
   modalButton: {
     flex: 1,

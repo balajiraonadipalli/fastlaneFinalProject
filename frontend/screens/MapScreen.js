@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Dimensions, TextInput, Modal, ScrollView, Animated, Image, ActivityIndicator, Platform, FlatList } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as ScreenCapture from 'expo-screen-capture';
@@ -32,11 +33,11 @@ const getManeuverIconFromMapbox = (type, modifier) => {
     'exit rotary': '→',
     'uturn': '↶',
   };
-  
+
   if (type === 'turn' && modifier && iconMap[type] && iconMap[type][modifier]) {
     return iconMap[type][modifier];
   }
-  
+
   return iconMap[type] || '→';
 };
 import { fetchTrafficLights, updateTrafficLightStatus } from '../services/trafficLightService';
@@ -90,6 +91,7 @@ const MapScreen = ({ route, navigation }) => {
   const [isLoadingLocation, setIsLoadingLocation] = useState(true); // Loading state for location
   const [isLoadingMap, setIsLoadingMap] = useState(true); // Loading state for map
   const [isCreatingRoute, setIsCreatingRoute] = useState(false); // Loading state for route creation
+  const [isSendingAlert, setIsSendingAlert] = useState(false); // Loading state for initial alert sync
   const [isFetchingCurrentLocation, setIsFetchingCurrentLocation] = useState(false); // Loading state for current location button
   const [navigationInstructions, setNavigationInstructions] = useState([]); // Turn-by-turn directions from Mapbox
   const [mapboxRouteData, setMapboxRouteData] = useState(null); // Store full Mapbox route data
@@ -119,35 +121,35 @@ const MapScreen = ({ route, navigation }) => {
     { id: 1, name: 'Chillakallu Toll Plaza', latitude: 16.5193, longitude: 80.6305, highway: 'NH-65', city: 'Guntur' },
     { id: 2, name: 'Pantangi Toll Plaza', latitude: 16.2903, longitude: 80.8765, highway: 'NH-65', city: 'Guntur' },
     { id: 3, name: 'Nalgonda Toll Plaza', latitude: 17.0555, longitude: 79.2675, highway: 'NH-65', city: 'Nalgonda' },
-    
+
     // Vijayawada - Chennai (NH-16)
     { id: 4, name: 'Rajahmundry Toll', latitude: 17.0005, longitude: 81.7779, highway: 'NH-16', city: 'Rajahmundry' },
     { id: 5, name: 'Tuni Toll Plaza', latitude: 17.3560, longitude: 82.5480, highway: 'NH-16', city: 'Tuni' },
     { id: 6, name: 'Chodavaram Toll', latitude: 17.8276, longitude: 82.9394, highway: 'NH-16', city: 'Visakhapatnam' },
-    
+
     // Visakhapatnam Area
     { id: 7, name: 'Simhachalam Toll', latitude: 17.7833, longitude: 83.2167, highway: 'NH-16', city: 'Visakhapatnam' },
     { id: 8, name: 'Pedagantyada Toll', latitude: 17.7833, longitude: 83.2000, highway: 'NH-16', city: 'Visakhapatnam' },
-    
+
     // Tirupati - Chennai (NH-71)
     { id: 9, name: 'Renigunta Toll Plaza', latitude: 13.6500, longitude: 79.5167, highway: 'NH-71', city: 'Tirupati' },
     { id: 10, name: 'Gudur Toll Plaza', latitude: 14.1485, longitude: 79.8508, highway: 'NH-16', city: 'Gudur' },
-    
+
     // Anantapur - Bangalore (NH-44)
     { id: 11, name: 'Gooty Toll Plaza', latitude: 15.1200, longitude: 77.6300, highway: 'NH-44', city: 'Anantapur' },
     { id: 12, name: 'Anantapur Toll', latitude: 14.6819, longitude: 77.6006, highway: 'NH-44', city: 'Anantapur' },
-    
+
     // Kurnool - Bangalore (NH-44)
     { id: 13, name: 'Adoni Toll Plaza', latitude: 15.6277, longitude: 77.2750, highway: 'NH-44', city: 'Kurnool' },
     { id: 14, name: 'Kurnool Toll', latitude: 15.8281, longitude: 78.0373, highway: 'NH-44', city: 'Kurnool' },
-    
+
     // Guntur Area
     { id: 15, name: 'Guntur Bypass Toll', latitude: 16.3067, longitude: 80.4365, highway: 'NH-16', city: 'Guntur' },
-    
+
     // Nellore - Chennai (NH-16)
     { id: 16, name: 'Nellore Toll Plaza', latitude: 14.4426, longitude: 79.9865, highway: 'NH-16', city: 'Nellore' },
     { id: 17, name: 'Kavali Toll Plaza', latitude: 14.9139, longitude: 79.9944, highway: 'NH-16', city: 'Nellore' },
-    
+
     // Inner Ring Road Vijayawada
     { id: 18, name: 'Vijayawada IRR Toll', latitude: 16.5062, longitude: 80.6480, highway: 'IRR', city: 'Vijayawada' },
   ]);
@@ -191,12 +193,12 @@ const MapScreen = ({ route, navigation }) => {
         };
         setLocation(currentCoords);
         setStartLocation(currentCoords);
-        
+
         // Animate map to user location smoothly
         if (mapRef.current) {
           mapRef.current.animateToRegion(currentCoords, 1000);
         }
-        
+
         // Set initial position for ambulance marker (location tracking useEffect will update this in real-time)
         if (role === 'ambulance') {
           const initialPos = {
@@ -212,7 +214,7 @@ const MapScreen = ({ route, navigation }) => {
           }
           // console.log('📍 Initial ambulance position set from location fetch:', initialPos);
         }
-        
+
         // Optionally get high accuracy location in background for better precision
         setTimeout(async () => {
           try {
@@ -258,9 +260,9 @@ const MapScreen = ({ route, navigation }) => {
         // console.error('Error enabling screenshots:', error);
       }
     };
-    
+
     enableScreenshots();
-    
+
     // Cleanup: Allow screenshots to remain enabled when component unmounts
     // (No need to disable, as we want screenshots to always be allowed)
   }, []);
@@ -268,20 +270,20 @@ const MapScreen = ({ route, navigation }) => {
   // Real-time traffic light status updates - Cycle through red -> green -> yellow -> red
   useEffect(() => {
     if (trafficLights.length === 0) return;
-    
+
     // Update traffic light statuses every second for real-time cycling
     const updateInterval = setInterval(() => {
       setTrafficLights(prevLights => {
         return prevLights.map(light => {
           if (!light) return light;
-          
+
           // Get timing configuration (default if not provided)
           const timing = light.timing || { red: 30, yellow: 5, green: 25 };
           let { status, timeRemaining } = light;
-          
+
           // Decrease time remaining
           const newTimeRemaining = Math.max(0, (timeRemaining || 0) - 1);
-          
+
           // Cycle through states: red -> green -> yellow -> red
           if (newTimeRemaining <= 0) {
             if (status === 'red') {
@@ -304,7 +306,7 @@ const MapScreen = ({ route, navigation }) => {
           } else {
             timeRemaining = newTimeRemaining;
           }
-          
+
           // Return updated light
           return {
             ...light,
@@ -315,13 +317,13 @@ const MapScreen = ({ route, navigation }) => {
         });
       });
     }, 1000); // Update every 1 second for smooth real-time changes
-    
+
     return () => clearInterval(updateInterval);
   }, [trafficLights.length]);
 
   // Track last traffic lights count to log only when it changes
   const lastTrafficLightsCountRef = useRef(0);
-  
+
   // Memoize traffic light markers for performance - with red marker background
   const trafficLightMarkers = useMemo(() => {
     if (trafficLights.length === 0) {
@@ -331,18 +333,18 @@ const MapScreen = ({ route, navigation }) => {
       }
       return null;
     }
-    
+
     // Only log when count changes, not on every update
     if (lastTrafficLightsCountRef.current !== trafficLights.length) {
       // console.log(`🗺️ Rendering ${trafficLights.length} traffic light markers`);
       lastTrafficLightsCountRef.current = trafficLights.length;
     }
-    
+
     return trafficLights.map((light, index) => {
       if (!light || !light.latitude || !light.longitude) {
         return null;
       }
-      
+
       return (
         <Marker
           key={`traffic-${light.id || `tl-${index}`}`}
@@ -356,8 +358,8 @@ const MapScreen = ({ route, navigation }) => {
           tracksViewChanges={false}
           zIndex={2001}
         >
-          <View style={styles.trafficLightMarker}>
-            <Text style={styles.trafficLightEmoji}>🚦</Text>
+          <View style={styles.ambulanceMainMarker}>
+            <Text style={styles.ambulanceMainMarkerText}>🚦</Text>
           </View>
         </Marker>
       );
@@ -420,10 +422,10 @@ const MapScreen = ({ route, navigation }) => {
                 const φ2 = currentPos.latitude * Math.PI / 180;
                 const Δφ = (currentPos.latitude - currentPosition.latitude) * Math.PI / 180;
                 const Δλ = (currentPos.longitude - currentPosition.longitude) * Math.PI / 180;
-                const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                          Math.cos(φ1) * Math.cos(φ2) *
-                          Math.sin(Δλ/2) * Math.sin(Δλ/2);
-                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
                 distanceMeters = R * c;
               }
 
@@ -431,14 +433,14 @@ const MapScreen = ({ route, navigation }) => {
               // If speed is very low (< 1 m/s ≈ 3.6 km/h), increase threshold to 5 meters
               // Reduced threshold for smoother marker updates during travel
               const minDistanceThreshold = (currentPos.speed < 1) ? 5 : 3;
-              
+
               // Round coordinates to 5 decimal places (approximately 1m precision)
               const roundedLat = Math.round(currentPos.latitude * 100000) / 100000;
               const roundedLng = Math.round(currentPos.longitude * 100000) / 100000;
-              
+
               // Only update if position has changed significantly (more than threshold)
               const shouldUpdate = !currentPosition || distanceMeters >= minDistanceThreshold;
-              
+
               // Animate rotation if heading is available (update even if position hasn't changed)
               if (currentPos.heading !== undefined && currentPos.heading !== null) {
                 Animated.timing(markerRotation, {
@@ -452,7 +454,7 @@ const MapScreen = ({ route, navigation }) => {
               if (shouldUpdate) {
                 // Update previous position before setting new one (for smooth animation)
                 setPreviousPosition(currentPosition);
-                
+
                 // Update current position with rounded coordinates
                 const roundedPos = {
                   ...currentPos,
@@ -462,10 +464,10 @@ const MapScreen = ({ route, navigation }) => {
                 // Track actual GPS speed and position separately from route animation
                 actualGPSSpeedRef.current = currentPos.speed || 0;
                 lastGPSPositionRef.current = roundedPos;
-                
+
                 setCurrentPosition(roundedPos);
                 // console.log(`📍 Ambulance position updated: ${distanceMeters.toFixed(1)}m movement`, roundedPos);
-                
+
                 // Center map on current location (only when position changes significantly)
                 if (mapRef.current && distanceMeters >= minDistanceThreshold) {
                   mapRef.current.animateToRegion({
@@ -475,18 +477,18 @@ const MapScreen = ({ route, navigation }) => {
                     longitudeDelta: 0.01,
                   }, 1000);
                 }
-                
+
                 // Update ambulance location for tracking
                 updateAmbulanceLocation(roundedPos);
-                
+
                 // Check toll gates within 1km
                 checkNearbyTolls(roundedPos);
-                
+
                 // Check for nearby police within 2km (only if journey has started)
                 if (isRouteActive) {
                   checkNearbyPolice(roundedPos);
                 }
-                
+
               }
             }
           );
@@ -520,12 +522,12 @@ const MapScreen = ({ route, navigation }) => {
     if (role === 'ambulance') {
       const coord = currentPosition || location;
       if (!coord || !coord.latitude || !coord.longitude) return;
-      
+
       // Round coordinates to compare
       const roundedLat = Math.round(coord.latitude * 1000000) / 1000000;
       const roundedLng = Math.round(coord.longitude * 1000000) / 1000000;
       const coordKey = `${roundedLat},${roundedLng}`;
-      
+
       // Only log when coordinates actually change
       if (lastMarkerCoords.current !== coordKey) {
         // console.log('🚑 Ambulance Marker State:', {
@@ -534,7 +536,7 @@ const MapScreen = ({ route, navigation }) => {
         //   coordinates: { lat: roundedLat, lng: roundedLng }
         // });
       }
-      
+
       // If we have location but no currentPosition, set it
       if (location && !currentPosition && role === 'ambulance') {
         const pos = {
@@ -544,7 +546,7 @@ const MapScreen = ({ route, navigation }) => {
           heading: 0,
         };
         setCurrentPosition(pos);
-        
+
         // Center map on ambulance location
         if (mapRef.current) {
           mapRef.current.animateToRegion({
@@ -563,10 +565,10 @@ const MapScreen = ({ route, navigation }) => {
     const lat1 = point1.latitude * Math.PI / 180;
     const lat2 = point2.latitude * Math.PI / 180;
     const dLon = (point2.longitude - point1.longitude) * Math.PI / 180;
-    
+
     const y = Math.sin(dLon) * Math.cos(lat2);
     const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    
+
     const bearing = Math.atan2(y, x) * 180 / Math.PI;
     return (bearing + 360) % 360; // Normalize to 0-360
   }, []);
@@ -584,35 +586,35 @@ const MapScreen = ({ route, navigation }) => {
     const bearing1 = calculateBearing(point1, point2);
     const bearing2 = calculateBearing(point2, point3);
     let turnAngle = bearing2 - bearing1;
-    
+
     // Normalize angle to -180 to 180
     if (turnAngle > 180) turnAngle -= 360;
     if (turnAngle < -180) turnAngle += 360;
-    
+
     return turnAngle;
   }, [calculateBearing]);
 
   // Generate navigation instructions from route with enhanced arrow icons
   const generateNavigationInstructions = useCallback((route) => {
     if (route.length < 3) return [];
-    
+
     const instructions = [];
     let cumulativeDistance = 0;
-    
+
     for (let i = 0; i < route.length - 2; i++) {
       const prev = route[i];
       const current = route[i + 1];
       const next = route[i + 2];
-      
+
       const segmentDistance = calculateDistance(current, next) * 1000; // meters
       const turnAngle = calculateTurnDirection(prev, current, next);
-      
+
       // Only create instruction for significant turns (>15 degrees)
       if (Math.abs(turnAngle) > 15) {
         let instruction = '';
         let icon = '→';
         let iconColor = role === 'ambulance' ? '#E74C3C' : '#4285F4'; // Role-based color
-        
+
         // Enhanced arrow icons - Google Maps style
         if (turnAngle > 15 && turnAngle <= 45) {
           instruction = 'Slight right';
@@ -635,7 +637,7 @@ const MapScreen = ({ route, navigation }) => {
           icon = '↙'; // Sharp left arrow
           iconColor = '#EA4335'; // Red for sharp turns
         }
-        
+
         instructions.push({
           index: i + 1,
           instruction,
@@ -646,10 +648,10 @@ const MapScreen = ({ route, navigation }) => {
           angle: turnAngle,
         });
       }
-      
+
       cumulativeDistance += segmentDistance;
     }
-    
+
     // Add final destination instruction
     if (route.length > 0) {
       instructions.push({
@@ -662,7 +664,7 @@ const MapScreen = ({ route, navigation }) => {
         angle: 0,
       });
     }
-    
+
     return instructions;
   }, [calculateDistance, calculateTurnDirection]);
 
@@ -670,19 +672,19 @@ const MapScreen = ({ route, navigation }) => {
   const updateNavigationUI = useCallback(async (currentIndex, route, currentPos) => {
     // Use Mapbox instructions if available (they have proper information)
     let instructions = navigationInstructions;
-    
+
     // If no Mapbox instructions, generate fallback instructions
     if (instructions.length === 0 && route.length > 2) {
       instructions = generateNavigationInstructions(route);
       setNavigationInstructions(instructions);
     }
-    
+
     if (instructions.length === 0) {
       setNextTurn(null);
       setDistanceToNextTurn(null);
       return;
     }
-    
+
     // For Mapbox instructions, find the closest instruction point to current position
     let nextInstruction = null;
     let minDistance = Infinity;
@@ -690,19 +692,19 @@ const MapScreen = ({ route, navigation }) => {
       latitude: route[currentIndex].latitude,
       longitude: route[currentIndex].longitude
     } : null);
-    
+
     if (currentPoint) {
       // Find the next instruction that hasn't been passed yet
       for (let i = 0; i < instructions.length; i++) {
         const instruction = instructions[i];
         let instructionPoint = null;
         let instructionDistance = 0;
-        
+
         // Handle Mapbox instruction structure (has point with lat/lng)
         if (instruction.point && instruction.point.latitude && instruction.point.longitude) {
           instructionPoint = instruction.point;
           instructionDistance = calculateDistance(currentPoint, instructionPoint) * 1000; // meters
-        } 
+        }
         // Handle Mapbox instruction with location array [lng, lat]
         else if (instruction.maneuver && instruction.maneuver.location && Array.isArray(instruction.maneuver.location)) {
           instructionPoint = {
@@ -720,22 +722,22 @@ const MapScreen = ({ route, navigation }) => {
           }
           instructionPoint = route[instruction.index] || route[Math.min(instruction.index, route.length - 1)];
         }
-        
+
         // Check if this instruction is ahead and closer than previous candidates
         if (instructionPoint && instructionDistance < minDistance && instructionDistance < 5000) {
           // Verify instruction is ahead by checking route position
-          const instructionRouteIndex = route.findIndex(r => 
+          const instructionRouteIndex = route.findIndex(r =>
             r && Math.abs(r.latitude - instructionPoint.latitude) < 0.001 &&
             Math.abs(r.longitude - instructionPoint.longitude) < 0.001
           );
-          
+
           // Accept if it's ahead in route or we couldn't find exact match (might be between points)
           if (instructionRouteIndex >= currentIndex || instructionRouteIndex === -1) {
             minDistance = instructionDistance;
             nextInstruction = {
               instruction: instruction.instruction || instruction.maneuver?.instruction || instruction.maneuver?.type || 'Continue',
-              icon: instruction.icon || (instruction.type && instruction.modifier ? 
-                getManeuverIconFromMapbox(instruction.type, instruction.modifier) : 
+              icon: instruction.icon || (instruction.type && instruction.modifier ?
+                getManeuverIconFromMapbox(instruction.type, instruction.modifier) :
                 (instruction.maneuver ? getManeuverIconFromMapbox(instruction.maneuver.type, instruction.maneuver.modifier) : '→')),
               iconColor: instruction.iconColor || roleColor,
               distance: instruction.distance || instructionDistance,
@@ -747,7 +749,7 @@ const MapScreen = ({ route, navigation }) => {
         }
       }
     }
-    
+
     if (nextInstruction) {
       setNextTurn({
         instruction: nextInstruction.instruction || 'Continue',
@@ -760,19 +762,19 @@ const MapScreen = ({ route, navigation }) => {
       setNextTurn(null);
       setDistanceToNextTurn(null);
     }
-    
+
     // Calculate remaining distance and time
     let remainingDist = 0;
     for (let i = currentIndex; i < route.length - 1; i++) {
       remainingDist += calculateDistance(route[i], route[i + 1]);
     }
     setRemainingDistance(remainingDist);
-    
+
     // Use actual speed if available, otherwise use navigation speed
     const speedKmh = currentPos?.speed ? currentPos.speed * 3.6 : navigationSpeedRef.current;
     const remainingTimeMin = speedKmh > 0 ? Math.ceil((remainingDist / speedKmh) * 60) : 0;
     setRemainingTime(remainingTimeMin);
-    
+
     // Update current street using reverse geocoding (throttled to every 10 seconds)
     const now = Date.now();
     if (currentPoint && (now - lastStreetUpdateRef.current > 10000)) {
@@ -822,7 +824,7 @@ const MapScreen = ({ route, navigation }) => {
     }
 
     // console.log('🚗 Starting optimized real-time route navigation...');
-    
+
     // Clear any existing animation
     if (routeAnimationRef.current) {
       clearInterval(routeAnimationRef.current);
@@ -852,20 +854,20 @@ const MapScreen = ({ route, navigation }) => {
     routeAnimationRef.current = setInterval(() => {
       const now = Date.now();
       const timeSinceStart = now - stateRef.startTime;
-      
+
       // Check if user is actually moving using REAL GPS speed (not route animation speed)
       const actualGPSSpeed = actualGPSSpeedRef.current * 3.6; // Convert m/s to km/h
       const isActuallyMoving = actualGPSSpeed >= minSpeedKmh;
-      
+
       // Also check if GPS position has actually changed (additional check)
       // But only check this after initial grace period to allow route animation to start
-      const gpsPositionChanged = lastGPSPositionRef.current && currentPosition ? 
+      const gpsPositionChanged = lastGPSPositionRef.current && currentPosition ?
         (Math.abs(lastGPSPositionRef.current.latitude - currentPosition.latitude) > 0.00001 ||
-         Math.abs(lastGPSPositionRef.current.longitude - currentPosition.longitude) > 0.00001) : true; // Default to true during grace period
-      
+          Math.abs(lastGPSPositionRef.current.longitude - currentPosition.longitude) > 0.00001) : true; // Default to true during grace period
+
       // During initial grace period, allow route animation to run regardless of GPS
       const isInGracePeriod = timeSinceStart < initialGracePeriod;
-      
+
       // If not moving and not in grace period, increment stationary count and pause route animation
       if (!isInGracePeriod && !isActuallyMoving && !gpsPositionChanged) {
         stateRef.stationaryCount++;
@@ -889,13 +891,13 @@ const MapScreen = ({ route, navigation }) => {
         // Reset stationary count when moving or in grace period
         stateRef.stationaryCount = 0;
       }
-      
+
       // After grace period, if not actually moving, don't simulate movement at all
       if (!isInGracePeriod && !isActuallyMoving) {
         // Don't update route position - let GPS handle it
         return;
       }
-      
+
       // Use actual GPS speed if available and moving, otherwise use 0 when stationary
       // Only use navigation speed during grace period if GPS speed is not available
       let speedKmh = 0;
@@ -921,29 +923,29 @@ const MapScreen = ({ route, navigation }) => {
 
       const currentPoint = routeCoordinates[stateRef.currentIndex];
       const nextPoint = routeCoordinates[stateRef.currentIndex + 1];
-      
+
       // Calculate distance to next point
       const segmentDistance = calculateDistance(currentPoint, nextPoint) * 1000; // Convert to meters
-      
+
       // Skip if segment is too short (avoid division by zero or very small numbers)
       if (segmentDistance < 1) {
         stateRef.currentIndex++;
         stateRef.segmentProgress = 0;
         return;
       }
-      
+
       // Calculate how much to move (distance covered in updateInterval ms)
       const distanceToMove = (speedMs * updateInterval) / 1000; // meters
       const progressIncrement = distanceToMove / segmentDistance;
-      
+
       // Update segment progress
       stateRef.segmentProgress += progressIncrement;
-      
+
       // If we've completed this segment, move to next
       if (stateRef.segmentProgress >= 1.0) {
         stateRef.segmentProgress = stateRef.segmentProgress - 1.0;
         stateRef.currentIndex++;
-        
+
         // Check if we've reached the end
         if (stateRef.currentIndex >= routeCoordinates.length - 1) {
           // Set position to final destination
@@ -951,7 +953,7 @@ const MapScreen = ({ route, navigation }) => {
             latitude: routeCoordinates[routeCoordinates.length - 1].latitude,
             longitude: routeCoordinates[routeCoordinates.length - 1].longitude,
             speed: 0,
-            heading: stateRef.currentIndex > 0 
+            heading: stateRef.currentIndex > 0
               ? calculateBearing(routeCoordinates[stateRef.currentIndex - 1], routeCoordinates[stateRef.currentIndex])
               : 0,
           };
@@ -964,14 +966,14 @@ const MapScreen = ({ route, navigation }) => {
           return;
         }
       }
-      
+
       // Interpolate position between current and next point
       const currentSegmentPoint = interpolateRoutePoint(
         routeCoordinates[stateRef.currentIndex],
         routeCoordinates[stateRef.currentIndex + 1],
         stateRef.segmentProgress
       );
-      
+
       // Calculate heading based on direction of travel
       let heading = 0;
       if (stateRef.currentIndex < routeCoordinates.length - 1) {
@@ -985,7 +987,7 @@ const MapScreen = ({ route, navigation }) => {
           routeCoordinates[stateRef.currentIndex]
         );
       }
-      
+
       // Update position (batch state updates)
       const newPosition = {
         latitude: currentSegmentPoint.latitude,
@@ -993,7 +995,7 @@ const MapScreen = ({ route, navigation }) => {
         speed: speedMs,
         heading: heading,
       };
-      
+
       // Only update state if position changed significantly (reduce re-renders and coordinate fluctuations)
       // Check distance from last position - only update if moved at least 3 meters
       const lastPos = currentPosition;
@@ -1002,13 +1004,13 @@ const MapScreen = ({ route, navigation }) => {
           { latitude: lastPos.latitude, longitude: lastPos.longitude },
           { latitude: newPosition.latitude, longitude: newPosition.longitude }
         ) * 1000; // Convert to meters
-        
+
         // Only update if moved at least 3 meters (reduces coordinate fluctuations)
         if (distanceMoved < 3) {
           return; // Skip this update - position hasn't changed enough
         }
       }
-      
+
       // Only update state if position changed significantly (reduce re-renders)
       // Calculate actual distance in meters for more accurate threshold
       let distanceMeters = 0;
@@ -1018,39 +1020,39 @@ const MapScreen = ({ route, navigation }) => {
         const φ2 = newPosition.latitude * Math.PI / 180;
         const Δφ = (newPosition.latitude - currentPosition.latitude) * Math.PI / 180;
         const Δλ = (newPosition.longitude - currentPosition.longitude) * Math.PI / 180;
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+          Math.cos(φ1) * Math.cos(φ2) *
+          Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         distanceMeters = R * c;
       }
       // Minimum 5 meters movement for route animation updates (reduces coordinate fluctuations)
       const shouldUpdatePosition = !currentPosition || distanceMeters >= 5;
-      
+
       // IMPORTANT: GPS position ALWAYS takes priority over route animation
       // Route animation should only update route progress, NOT the marker position
       // The marker position should come from GPS location tracking
-      
+
       // Only update route progress index and segment progress for navigation UI
       // But DON'T update currentPosition - let GPS handle that
       if (shouldUpdatePosition) {
         // Update route progress for navigation UI calculations
         setRouteProgressIndex(stateRef.currentIndex);
         setRouteProgress(stateRef.segmentProgress);
-        
+
         // Update navigation UI with route progress (but marker position comes from GPS)
         // Use GPS position if available, otherwise use route position
-        const positionForUI = currentPosition && lastGPSPositionRef.current 
+        const positionForUI = currentPosition && lastGPSPositionRef.current
           ? currentPosition  // Use actual GPS position
           : newPosition;     // Fallback to route position if no GPS
-        
+
         updateNavigationUI(stateRef.currentIndex, routeCoordinates, positionForUI);
       }
-      
+
       // NEVER update currentPosition from route animation when GPS is available
       // GPS location tracking (watchPositionAsync) is the source of truth for marker position
       // Route animation is only for calculating progress along the route
-      
+
       // Only update rotation if heading changed significantly (reduce animations)
       const headingDiff = Math.abs(heading - stateRef.lastHeading);
       if (headingDiff > headingThreshold || headingDiff > 350) { // Handle wrap-around
@@ -1061,16 +1063,16 @@ const MapScreen = ({ route, navigation }) => {
           useNativeDriver: false,
         }).start();
       }
-      
+
       // Throttle map camera updates (every 500ms instead of every update)
       // Use GPS position for map centering, not route animation position
       if (now - stateRef.lastMapUpdate >= mapUpdateInterval) {
         stateRef.lastMapUpdate = now;
         // Use actual GPS position for map centering, not route animation position
-        const positionForMap = currentPosition && lastGPSPositionRef.current 
+        const positionForMap = currentPosition && lastGPSPositionRef.current
           ? currentPosition  // Use actual GPS position
           : newPosition;     // Fallback to route position if no GPS
-        
+
         if (mapRef.current) {
           mapRef.current.animateToRegion({
             latitude: positionForMap.latitude,
@@ -1080,17 +1082,17 @@ const MapScreen = ({ route, navigation }) => {
           }, 300);
         }
       }
-      
+
       // Throttle expensive checks (every 2 seconds instead of every update)
       if (now - stateRef.lastCheckUpdate >= checkUpdateInterval) {
         stateRef.lastCheckUpdate = now;
-        
+
         // Mapbox: Check for route deviation and auto-reroute if needed
         // Use actual GPS position for deviation check, not route animation position
-        const positionForDeviationCheck = currentPosition && lastGPSPositionRef.current 
+        const positionForDeviationCheck = currentPosition && lastGPSPositionRef.current
           ? currentPosition  // Use actual GPS position
           : newPosition;     // Fallback to route position if no GPS
-        
+
         if (currentPosition && routeCoordinates.length > 0 && endLocation) {
           const hasDeviated = checkRouteDeviation(positionForDeviationCheck, routeCoordinates, 50); // 50 meters deviation threshold
           if (hasDeviated) {
@@ -1121,12 +1123,12 @@ const MapScreen = ({ route, navigation }) => {
               });
           }
         }
-        
+
         // Update ambulance location for tracking (if function exists)
         if (typeof updateAmbulanceLocation === 'function') {
           updateAmbulanceLocation(newPosition);
         }
-        
+
         // Check for nearby tolls, police, and traffic lights (if functions exist)
         if (typeof checkNearbyTolls === 'function') {
           checkNearbyTolls(newPosition);
@@ -1136,7 +1138,7 @@ const MapScreen = ({ route, navigation }) => {
           checkNearbyPolice(newPosition);
         }
       }
-      
+
     }, updateInterval);
 
     return () => {
@@ -1172,22 +1174,22 @@ const MapScreen = ({ route, navigation }) => {
         const pollingUrl = `${API_ENDPOINTS.POLICE_ALERTS}?driverName=${encodeURIComponent(userName || '')}`;
         console.log(`📍 Fetching from: ${pollingUrl}`);
         console.log(`👤 Driver Name: "${userName}"`);
-        console.log(`📝 Looking for responses to ${policeAlerts.length} alerts:`, 
+        console.log(`📝 Looking for responses to ${policeAlerts.length} alerts:`,
           policeAlerts.map(a => `${a.policeName} (ID: ${a.alertId || a.policeId})`).join(', ')
         );
-        
+
         // Fetch alerts filtered by driverName to get only this ambulance's alerts
         const response = await fetch(pollingUrl);
-        
+
         if (!response.ok) {
           console.error(`❌ HTTP Error: ${response.status}`);
           return;
         }
-        
+
         const data = await response.json();
         console.log(`🚑 AMBULANCE: Received ${data.alerts?.length || 0} total alerts from backend`);
         console.log(`🚑 AMBULANCE: Backend response success: ${data.success}`);
-        
+
         if (data.success && data.alerts) {
           // Log all alert statuses with full details
           console.log(`🚑 AMBULANCE: All alerts received from backend:`);
@@ -1203,20 +1205,20 @@ const MapScreen = ({ route, navigation }) => {
               policeResponse: alert.policeResponse || 'none'
             });
           });
-          
+
           // Check if any of our alerts have been responded to (acknowledged or responded)
           // Since we're filtering by driverName, all returned alerts are for this ambulance
           console.log(`🚑 AMBULANCE: Checking ${data.alerts.length} alerts for responses...`);
           data.alerts.forEach(a => {
             console.log(`  📋 Alert #${a.id}: status="${a.status}", trafficStatus="${a.trafficStatus || 'none'}", driverName="${a.driverName}"`);
           });
-          
+
           const respondedAlerts = data.alerts.filter(alert => {
             // Check if alert has been responded to - check multiple status values
             const hasRespondedStatus = alert.status === 'responded' || alert.status === 'acknowledged';
             const hasTrafficStatus = alert.trafficStatus === 'accepted' || alert.trafficStatus === 'rejected';
             const isResponded = hasRespondedStatus || hasTrafficStatus;
-            
+
             console.log(`  🔍 Alert #${alert.id} response check:`, {
               status: alert.status,
               trafficStatus: alert.trafficStatus,
@@ -1224,30 +1226,30 @@ const MapScreen = ({ route, navigation }) => {
               hasTrafficStatus,
               isResponded
             });
-            
+
             // Since alerts are filtered by driverName in the backend, if driverName matches, it's definitely ours
             const driverNameMatches = alert.driverName && alert.driverName.toLowerCase() === userName?.toLowerCase();
-            
+
             // Also try to match with our sent alerts by alert ID, police ID/Name, or route
             const matchingAlert = policeAlerts.find(pa => {
               // Match by alert ID (most reliable)
               if (alert.id && pa.alertId === alert.id) return true;
-              
+
               // Match by police ID or name
               if (pa.policeId === alert.policeId || pa.policeName === alert.policeName) return true;
-              
+
               // Match by route (same start/end addresses) - important since alerts go to all police
-              if (pa.startAddress && pa.endAddress && 
-                  pa.startAddress === alert.startAddress && 
-                  pa.endAddress === alert.endAddress) return true;
-              
+              if (pa.startAddress && pa.endAddress &&
+                pa.startAddress === alert.startAddress &&
+                pa.endAddress === alert.endAddress) return true;
+
               return false;
             });
-            
+
             // If driverName matches (which it should since we filtered by it), it's definitely ours
             // OR if we have a matching alert in our sent alerts
             const isOurs = driverNameMatches || !!matchingAlert;
-            
+
             console.log(`  🔍 Checking alert ${alert.id} (${alert.policeName || 'Unknown'}):`, {
               status: alert.status,
               trafficStatus: alert.trafficStatus,
@@ -1264,7 +1266,7 @@ const MapScreen = ({ route, navigation }) => {
               endAddress: alert.endAddress,
               ourAlertsCount: policeAlerts.length
             });
-            
+
             if (isResponded && isOurs) {
               console.log(`  ✅ MATCH! This is our responded alert: ${alert.policeName || 'Unknown'}`);
             } else if (isResponded && !isOurs) {
@@ -1272,13 +1274,13 @@ const MapScreen = ({ route, navigation }) => {
             } else if (!isResponded) {
               console.log(`  ⏳ Alert not yet responded - status: ${alert.status}, trafficStatus: ${alert.trafficStatus}`);
             }
-            
+
             return isResponded && isOurs;
           });
 
           if (respondedAlerts.length > 0) {
             console.log(`\n🚑 ===== AMBULANCE: FOUND ${respondedAlerts.length} RESPONSE(S)! =====`);
-            
+
             respondedAlerts.forEach(alert => {
               console.log(`\n🚑 === AMBULANCE: PROCESSING RESPONSE ===`);
               console.log(`📨 Response from Police Station: ${alert.policeName || 'Unknown'}`);
@@ -1296,20 +1298,20 @@ const MapScreen = ({ route, navigation }) => {
                 startAddress: alert.startAddress,
                 endAddress: alert.endAddress
               });
-              
+
               // Check if we haven't already processed this response
               // Create a unique identifier for this response using alert ID (most reliable)
-              const responseId = alert.id ? `alert_${alert.id}` : 
+              const responseId = alert.id ? `alert_${alert.id}` :
                 `${alert.policeId || alert.policeName || 'unknown'}_${alert.respondedAt || alert.acknowledgedAt || Date.now()}`;
-              
+
               // Check both the processed responses ref and the state
               const alreadyProcessedInRef = processedResponsesRef.current.has(responseId);
               const alreadyProcessedInState = policeResponses.some(pr => {
                 // Match by alert ID if available
                 if (alert.id && pr.alertId === alert.id) return true;
                 // Match by police and response time
-                return (pr.policeId === alert.policeId || pr.policeName === alert.policeName) && 
-                       pr.respondedAt === (alert.respondedAt || alert.acknowledgedAt);
+                return (pr.policeId === alert.policeId || pr.policeName === alert.policeName) &&
+                  pr.respondedAt === (alert.respondedAt || alert.acknowledgedAt);
               });
 
               console.log(`  🔍 Duplicate check for alert ${alert.id}:`, {
@@ -1365,10 +1367,10 @@ const MapScreen = ({ route, navigation }) => {
     const R = 6371; // Earth's radius in km
     const dLat = (point2.latitude - point1.latitude) * Math.PI / 180;
     const dLon = (point2.longitude - point1.longitude) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(point1.latitude * Math.PI / 180) * Math.cos(point2.latitude * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(point1.latitude * Math.PI / 180) * Math.cos(point2.latitude * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // Distance in km
   };
 
@@ -1415,15 +1417,18 @@ const MapScreen = ({ route, navigation }) => {
 
   // Check for nearby police users within 2km radius (based on current locations from backend)
   // Only works when journey is active (isRouteActive = true)
-  const checkNearbyPolice = async (ambulanceLocation) => {
-    // Don't check if journey hasn't started
-    if (!isRouteActive) {
+  // overrides: Optional object to provide fresh data (bypassing state) and force check
+  const checkNearbyPolice = async (ambulanceLocation, overrides = null) => {
+    const { startAddr, endAddr, routeCoords, forceCheck } = overrides || {};
+
+    // Don't check if journey hasn't started (unless forceCheck is true - initial sync)
+    if (!isRouteActive && !forceCheck) {
       // console.log('⏸️ Journey not started yet. Alerts will be sent only after clicking "Start Journey"');
       return;
     }
-    
+
     // CRITICAL: Check if we're in cooldown period after acceptance
-    if (lastAcceptanceTimeRef.current) {
+    if (lastAcceptanceTimeRef.current && !forceCheck) {
       const timeSinceAcceptance = Date.now() - lastAcceptanceTimeRef.current;
       if (timeSinceAcceptance < ALERT_COOLDOWN_DURATION) {
         const remainingMinutes = Math.ceil((ALERT_COOLDOWN_DURATION - timeSinceAcceptance) / 1000 / 60);
@@ -1435,32 +1440,36 @@ const MapScreen = ({ route, navigation }) => {
         lastAcceptanceTimeRef.current = null;
       }
     }
-    
+
+    const currentStartAddress = startAddr || startAddress;
+    const currentEndAddress = endAddr || endAddress;
+    const currentRouteCoordinates = routeCoords || routeCoordinates;
+
     // CRITICAL: Don't send alerts if source or destination addresses are missing
-    if (!startAddress || startAddress.trim() === '' || startAddress.toLowerCase() === 'unknown' ||
-        !endAddress || endAddress.trim() === '' || endAddress.toLowerCase() === 'unknown') {
-      // console.log('⏸️ Cannot send alerts: Missing source or destination address. Start:', startAddress, 'End:', endAddress);
+    if (!currentStartAddress || currentStartAddress.trim() === '' || currentStartAddress.toLowerCase() === 'unknown' ||
+      !currentEndAddress || currentEndAddress.trim() === '' || currentEndAddress.toLowerCase() === 'unknown') {
+      // console.log('⏸️ Cannot send alerts: Missing source or destination address. Start:', currentStartAddress, 'End:', currentEndAddress);
       return;
     }
-    
+
     // CRITICAL: Don't send alerts if route coordinates are missing
-    if (!routeCoordinates || routeCoordinates.length === 0) {
+    if (!currentRouteCoordinates || currentRouteCoordinates.length === 0) {
       // console.log('⏸️ Cannot send alerts: Route coordinates not available');
       return;
     }
-    
+
     // Throttle police checks to every 5 seconds to prevent too many requests
     const now = Date.now();
-    if (now - lastPoliceCheckRef.current < 5000) {
+    if (!forceCheck && now - lastPoliceCheckRef.current < 5000) {
       return; // Skip if checked recently
     }
     lastPoliceCheckRef.current = now;
-    
+
     try {
       // Fetch current police locations from backend with timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
+
       let response;
       try {
         response = await fetch(API_ENDPOINTS.POLICE_LOCATIONS, {
@@ -1485,7 +1494,7 @@ const MapScreen = ({ route, navigation }) => {
         }
         return;
       }
-      
+
       if (!response || !response.ok) {
         // Backend not available or error response
         // Only update if data actually changed
@@ -1495,9 +1504,9 @@ const MapScreen = ({ route, navigation }) => {
         }
         return;
       }
-      
+
       const data = await response.json();
-      
+
       if (data.success && data.police && Array.isArray(data.police)) {
         // Get police users with their current locations
         const policeUsers = data.police
@@ -1522,8 +1531,8 @@ const MapScreen = ({ route, navigation }) => {
             // Round coordinates to prevent micro-changes that cause flickering
             const roundedLat = Math.round(police.latitude * 100000) / 100000;
             const roundedLng = Math.round(police.longitude * 100000) / 100000;
-            return { 
-              ...police, 
+            return {
+              ...police,
               distance,
               latitude: roundedLat,
               longitude: roundedLng
@@ -1534,51 +1543,51 @@ const MapScreen = ({ route, navigation }) => {
 
         if (nearby.length > 0) {
           // console.log(`✅ ${nearby.length} police user(s) within 2km range!`);
-          
-          // MAX 3-5 alerts per ambulance per police user to prevent spam
-          const MAX_ALERTS_PER_POLICE = 3; // Maximum 3 alerts per police user
-          const MAX_TOTAL_ALERTS = 5; // Maximum 5 total alerts across all police
-          
+
+          // MAX alerts per ambulance per police user to prevent spam - INCREASED for better visibility
+          const MAX_ALERTS_PER_POLICE = 10; // Maximum 10 alerts per police user
+          const MAX_TOTAL_ALERTS = 20; // Maximum 20 total alerts across all police
+
           const pendingAlerts = policeAlerts.filter(a => a.status === 'pending' || !a.status);
           const acknowledgedAlerts = policeAlerts.filter(a => a.status === 'acknowledged' || a.status === 'responded');
-          
+
           // console.log(`📊 Current alerts: ${policeAlerts.length} total, ${pendingAlerts.length} pending, ${acknowledgedAlerts.length} acknowledged`);
-          
+
           // Only send new alerts if we haven't reached the total max limit
           if (pendingAlerts.length < MAX_TOTAL_ALERTS) {
             nearby.forEach(police => {
               // Count alerts sent to THIS specific police user
-              const alertsToThisPolice = policeAlerts.filter(alert => 
+              const alertsToThisPolice = policeAlerts.filter(alert =>
                 (alert.policeId === police.id || alert.policeName === police.name)
               );
               const pendingAlertsToThisPolice = alertsToThisPolice.filter(a => a.status === 'pending' || !a.status);
-              const acknowledgedAlertsToThisPolice = alertsToThisPolice.filter(a => 
-                a.status === 'acknowledged' || a.status === 'responded' || 
+              const acknowledgedAlertsToThisPolice = alertsToThisPolice.filter(a =>
+                a.status === 'acknowledged' || a.status === 'responded' ||
                 a.trafficStatus === 'accepted' || a.trafficStatus === 'rejected'
               );
-              
+
               // IMPORTANT: Don't send alerts to police who already accepted/rejected
               if (acknowledgedAlertsToThisPolice.length > 0) {
                 // console.log(`✅ Police ${police.name} already responded (accepted/rejected). Skipping alerts to this police.`);
                 return;
               }
-              
+
               // Check if we've already sent max alerts to this police
               if (pendingAlertsToThisPolice.length >= MAX_ALERTS_PER_POLICE) {
                 // console.log(`⏸️ Max alerts (${MAX_ALERTS_PER_POLICE}) already sent to ${police.name}, skipping...`);
                 return;
               }
-              
+
               // Check if we've already sent an alert to this police that hasn't been acknowledged
               // Increase cooldown to 2 minutes to prevent spam
-              const recentAlertExists = alertsToThisPolice.some(alert => 
+              const recentAlertExists = alertsToThisPolice.some(alert =>
                 (alert.status === 'pending' || !alert.status) &&
-                Date.now() - new Date(alert.timestamp).getTime() < 120000 // Within last 2 minutes
+                Date.now() - new Date(alert.timestamp).getTime() < 15000 // Within last 15 seconds (reduced from 2 mins)
               );
-              
+
               if (!recentAlertExists && pendingAlerts.length < MAX_TOTAL_ALERTS) {
                 console.log(`📤 Sending alert to ${police.name} (${(police.distance * 1000).toFixed(0)}m away)... [${pendingAlertsToThisPolice.length + 1}/${MAX_ALERTS_PER_POLICE}]`);
-                sendPoliceAlert(police, ambulanceLocation, police.distance);
+                sendPoliceAlert(police, ambulanceLocation, police.distance, overrides);
               } else {
                 // console.log(`⏳ Alert already sent to ${police.name} recently or max limit reached, skipping...`);
               }
@@ -1628,21 +1637,28 @@ const MapScreen = ({ route, navigation }) => {
   };
 
   // Send alert to ALL police users (not just police station)
-  const sendPoliceAlert = async (police, ambulanceLocation, distance) => {
+  // overrides: Optional object to provide fresh data (bypassing state) for immediate sync
+  const sendPoliceAlert = async (police, ambulanceLocation, distance, overrides = null) => {
     try {
       console.log('\n🚨 === SENDING POLICE ALERT ===');
-      console.log('📋 Alert Data Check:');
+
+      // PREPARE DATA: Use overrides if available (fresh data), otherwise use state (potentially stale)
+      // We use 'let' because we might enhance these addresses later with reverse geocoding
+      let finalStartAddress = overrides?.startAddr || startAddress;
+      let finalEndAddress = overrides?.endAddr || endAddress;
+      const finalRouteCoordinates = overrides?.routeCoords || routeCoordinates;
+      let alertArea = null; // Area/City for the alert
+
+      console.log('📋 Alert Data Check:', overrides ? '(Using FRESH overrides)' : '(Using STATE)');
       console.log('  - Police:', police.name);
       console.log('  - Distance:', distance);
-      // console.log('  - isRouteActive:', isRouteActive);
-      // console.log('  - routeCoordinates length:', routeCoordinates.length);
-      console.log('  - startAddress:', startAddress);
-      console.log('  - endAddress:', endAddress);
+      console.log('  - startAddress:', finalStartAddress);
+      console.log('  - endAddress:', finalEndAddress);
       // console.log('  - startLocation:', startLocation);
       // console.log('  - endLocation:', endLocation);
       // console.log('  - currentPosition:', currentPosition);
       // console.log('  - location:', location);
-      
+
       const distanceKm = distance;
       const distanceMeters = Math.round(distanceKm * 1000);
 
@@ -1652,15 +1668,7 @@ const MapScreen = ({ route, navigation }) => {
       const ambulanceCurrentPos = ambulanceLocation || currentPosition || location;
       const sourceLocation = startLocation || ambulanceCurrentPos; // Where journey started
       const destinationLocation = endLocation; // Where ambulance is going
-      
-      // console.log('📍 Location Check:');
-      // console.log('  - ambulanceLocation (parameter - real-time):', ambulanceLocation);
-      // console.log('  - currentPosition (GPS tracked):', currentPosition);
-      // console.log('  - location (initial):', location);
-      // console.log('  - ambulanceCurrentPos (selected):', ambulanceCurrentPos);
-      // console.log('  - sourceLocation (start):', sourceLocation);
-      // console.log('  - destinationLocation (end):', destinationLocation);
-      
+
       // Validate that both source and destination locations exist
       if (!ambulanceCurrentPos || !destinationLocation) {
         console.warn('❌ Cannot send alert: Missing ambulance location or destination');
@@ -1672,25 +1680,26 @@ const MapScreen = ({ route, navigation }) => {
       // CRITICAL: Validate that both source and destination addresses are available
       // Don't send alert if addresses are missing, empty, or "Unknown"
       // console.log('📝 Address Validation:');
-      // console.log('  - startAddress:', startAddress, '(valid:', !!(startAddress && startAddress.trim() !== '' && startAddress.toLowerCase() !== 'unknown'), ')');
-      // console.log('  - endAddress:', endAddress, '(valid:', !!(endAddress && endAddress.trim() !== '' && endAddress.toLowerCase() !== 'unknown'), ')');
-      
-      if (!startAddress || startAddress.trim() === '' || startAddress.toLowerCase() === 'unknown' ||
-          !endAddress || endAddress.trim() === '' || endAddress.toLowerCase() === 'unknown') {
+      // console.log('  - startAddress:', finalStartAddress, '(valid:', !!(finalStartAddress && finalStartAddress.trim() !== '' && finalStartAddress.toLowerCase() !== 'unknown'), ')');
+      // console.log('  - endAddress:', finalEndAddress, '(valid:', !!(finalEndAddress && finalEndAddress.trim() !== '' && finalEndAddress.toLowerCase() !== 'unknown'), ')');
+
+      if (!finalStartAddress || finalStartAddress.trim() === '' || finalStartAddress.toLowerCase() === 'unknown' ||
+        !finalEndAddress || finalEndAddress.trim() === '' || finalEndAddress.toLowerCase() === 'unknown') {
         console.warn('❌ Cannot send alert: Missing source or destination address');
-        // console.warn('  - startAddress:', startAddress);
-        // console.warn('  - endAddress:', endAddress);
+        console.log('DEBUG: startAddress value:', finalStartAddress);
+        console.log('DEBUG: endAddress value:', finalEndAddress);
         return;
       }
 
-      // Get proper addresses - use reverse geocoding if addresses are empty or "Unknown"
-      let finalStartAddress = startAddress;
-      let finalEndAddress = endAddress;
-      
+      // Variables strictly already defined above
+      // let finalStartAddress = startAddress;   <-- REMOVED (Duplicate)
+      // let finalEndAddress = endAddress;       <-- REMOVED (Duplicate)
+      // let alertArea = null;                   <-- REMOVED (Duplicate)
+
       // Try to enhance addresses with reverse geocoding if they seem incomplete
       // But only if we have valid addresses to begin with (already validated above)
-      if (finalStartAddress && finalStartAddress.trim() !== '' && 
-          (finalStartAddress.toLowerCase().includes('location:') || finalStartAddress.length < 20)) {
+      if (finalStartAddress && finalStartAddress.trim() !== '' &&
+        (finalStartAddress.toLowerCase().includes('location:') || finalStartAddress.length < 20)) {
         try {
           const reverseGeocoded = await Location.reverseGeocodeAsync({
             latitude: sourceLocation.latitude,
@@ -1704,17 +1713,28 @@ const MapScreen = ({ route, navigation }) => {
               addr.district || addr.subregion,
               addr.city || addr.region
             ].filter(Boolean).join(', ').trim();
-            if (enhancedAddress) {
+
+            // Validate enhanced address - ignore if it contains "Unknown"
+            if (enhancedAddress && !enhancedAddress.toLowerCase().includes('unknown')) {
+              console.log('✅ Enhanced start address:', enhancedAddress);
               finalStartAddress = enhancedAddress;
+            } else {
+              console.log('⚠️ Enhanced start address contained "unknown", keeping original:', finalStartAddress);
+            }
+
+            // Capture area for the alert
+            if (!alertArea && (addr.city || addr.region || addr.subregion || addr.district)) {
+              alertArea = addr.city || addr.region || addr.subregion || addr.district;
+              console.log('✅ Captured alert area:', alertArea);
             }
           }
         } catch (e) {
           // console.log('Reverse geocoding failed for start, using provided address');
         }
       }
-      
-      if (finalEndAddress && finalEndAddress.trim() !== '' && 
-          (finalEndAddress.toLowerCase().includes('location:') || finalEndAddress.length < 20)) {
+
+      if (finalEndAddress && finalEndAddress.trim() !== '' &&
+        (finalEndAddress.toLowerCase().includes('location:') || finalEndAddress.length < 20)) {
         try {
           const reverseGeocoded = await Location.reverseGeocodeAsync({
             latitude: destinationLocation.latitude,
@@ -1728,42 +1748,73 @@ const MapScreen = ({ route, navigation }) => {
               addr.district || addr.subregion,
               addr.city || addr.region
             ].filter(Boolean).join(', ').trim();
-            if (enhancedAddress) {
+
+            // Validate enhanced address - ignore if it contains "Unknown"
+            if (enhancedAddress && !enhancedAddress.toLowerCase().includes('unknown')) {
+              console.log('✅ Enhanced end address:', enhancedAddress);
               finalEndAddress = enhancedAddress;
+            } else {
+              console.log('⚠️ Enhanced end address contained "unknown", keeping original:', finalEndAddress);
+            }
+
+            // Capture area for the alert if not already set
+            if (!alertArea && (addr.city || addr.region || addr.subregion || addr.district)) {
+              alertArea = addr.city || addr.region || addr.subregion || addr.district;
+              console.log('✅ Captured alert area (from end location):', alertArea);
             }
           }
         } catch (e) {
           // console.log('Reverse geocoding failed for end, using provided address');
         }
       }
-      
+
       // Final validation: Ensure we have valid addresses after enhancement
-      if (!finalStartAddress || finalStartAddress.trim() === '' || 
-          !finalEndAddress || finalEndAddress.trim() === '') {
+      if (!finalStartAddress || finalStartAddress.trim() === '' ||
+        !finalEndAddress || finalEndAddress.trim() === '') {
         console.warn('⚠️ Cannot send alert: Invalid addresses after processing. Start:', finalStartAddress, 'End:', finalEndAddress);
         return;
       }
 
-      // CRITICAL: Use actual current position for ambulance location (real-time tracking)
-      // ambulanceCurrentPos is the real-time position, sourceLocation is where journey started
-      console.log('📍 Location Assignment for Alert:');
-      console.log('  - ambulanceCurrentPos (for alert.location - real-time):', ambulanceCurrentPos);
-      console.log('  - sourceLocation (for alert.startLocation - journey start):', sourceLocation);
-      console.log('  - destinationLocation (for alert.endLocation):', destinationLocation);
-      
+      // CRITICAL: Ensure robust location data with fallbacks
+      // 1. Current Ambulance Location: Prioritize real-time pos, fallback to source
+      const finalAmbulanceLocation = ambulanceCurrentPos || sourceLocation ||
+        (currentPosition ? { latitude: currentPosition.latitude, longitude: currentPosition.longitude } : null) ||
+        (location ? { latitude: location.latitude, longitude: location.longitude } : null);
+
+      // 2. Start Location: Prioritize source provided, fallback to current location
+      const finalStartLocation = sourceLocation || finalAmbulanceLocation;
+
+      // 3. End Location: Prioritize destination provided, fallback to last route point if available
+      let finalEndLocation = destinationLocation;
+      if (!finalEndLocation && routeCoordinates && routeCoordinates.length > 0) {
+        finalEndLocation = routeCoordinates[routeCoordinates.length - 1];
+        console.log('⚠️ Destination location missing, using last route point as fallback');
+      }
+
+      console.log('📍 FINAL Location Assignment for Alert:');
+      console.log('  - finalAmbulanceLocation:', finalAmbulanceLocation);
+      console.log('  - finalStartLocation:', finalStartLocation);
+      console.log('  - finalEndLocation:', finalEndLocation);
+
+      if (!finalAmbulanceLocation || !finalStartLocation || !finalEndLocation) {
+        console.warn('❌ Cannot send alert: Critical location data missing even after fallbacks');
+        return;
+      }
+
       const alertData = {
         policeId: police.id, // Which police was nearby (for reference)
         policeName: police.name, // Which police was nearby (for reference)
         ambulanceRole: role,
         driverName: userName,
         distance: distanceMeters,
-        location: ambulanceCurrentPos, // Ambulance's CURRENT real-time location (for map marker - THIS IS CRITICAL)
-        route: routeCoordinates.length > 0 ? 'Active Emergency Route' : 'No Route',
-        routeCoordinates: routeCoordinates.length > 0 ? routeCoordinates : null, // Send actual route
-        startLocation: sourceLocation, // Source/start location (where journey started)
-        endLocation: destinationLocation, // Destination (where ambulance is going)
+        location: finalAmbulanceLocation, // Ambulance's CURRENT real-time location
+        route: finalRouteCoordinates.length > 0 ? 'Active Emergency Route' : 'No Route',
+        routeCoordinates: finalRouteCoordinates.length > 0 ? finalRouteCoordinates : null, // Send actual route
+        startLocation: finalStartLocation, // Source/start location
+        endLocation: finalEndLocation, // Destination
         startAddress: finalStartAddress,
         endAddress: finalEndAddress,
+        area: alertArea || 'Unknown Area', // Add area field for Police Dashboard
         timestamp: new Date().toISOString(),
         forAllPolice: true // This alert goes to ALL logged-in police users (not just the nearby one)
       };
@@ -1806,7 +1857,7 @@ const MapScreen = ({ route, navigation }) => {
       // console.log('  - endLocation:', alertData.endLocation ? '✅' : '❌');
       // console.log('  - routeCoordinates:', alertData.routeCoordinates ? `${alertData.routeCoordinates.length} points` : '❌ NULL');
       // console.log('📦 Full JSON payload (first 1000 chars):', JSON.stringify(alertData).substring(0, 1000));
-      
+
       const backendResponse = await fetch(API_ENDPOINTS.POLICE_ALERT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1912,25 +1963,25 @@ const MapScreen = ({ route, navigation }) => {
 
       // Handle WebSocket response format (from backend) or polling format
       const responseData = alert.alert || alert;
-      
+
       // Create a unique identifier for this response using alert ID (most reliable)
-      const responseId = alert.id ? `alert_${alert.id}` : 
+      const responseId = alert.id ? `alert_${alert.id}` :
         `${alert.policeId || alert.policeName || 'unknown'}_${alert.respondedAt || alert.acknowledgedAt || Date.now()}`;
-      
+
       // Check if this response has already been processed
       if (processedResponsesRef.current.has(responseId)) {
         console.log(`⏭️ Response ${responseId} already processed, skipping duplicate alert`);
         return;
       }
-      
+
       // Mark as processed immediately to prevent duplicate alerts
       processedResponsesRef.current.add(responseId);
       console.log(`🚑 STEP 2: Marked response ${responseId} as processed (alert ID: ${alert.id})`);
-      
+
       // Determine trafficStatus from alert data - check multiple sources
       console.log(`🚑 STEP 3: Determining trafficStatus...`);
       let trafficStatus = alert.trafficStatus || responseData.trafficStatus;
-      
+
       console.log('🔍 TrafficStatus check:', {
         alertTrafficStatus: alert.trafficStatus,
         responseDataTrafficStatus: responseData.trafficStatus,
@@ -1938,7 +1989,7 @@ const MapScreen = ({ route, navigation }) => {
         alertPoliceResponse: alert.policeResponse,
         initialTrafficStatus: trafficStatus
       });
-      
+
       // If status is acknowledged but no trafficStatus, infer from message
       if (!trafficStatus && (alert.status === 'acknowledged' || alert.status === 'responded')) {
         if (alert.policeResponse) {
@@ -1952,7 +2003,7 @@ const MapScreen = ({ route, navigation }) => {
           }
         }
       }
-      
+
       // CRITICAL: If still no trafficStatus but status is acknowledged, check the backend response structure
       // The backend sets trafficStatus when police responds, so it should always be present
       if (!trafficStatus) {
@@ -1965,11 +2016,11 @@ const MapScreen = ({ route, navigation }) => {
         // Default to 'responded' if we can't determine
         trafficStatus = 'responded';
       }
-      
+
       console.log('✅ Final trafficStatus determined:', trafficStatus);
-      const message = alert.message || responseData.policeResponse || alert.policeResponse || 
-                     (trafficStatus === 'accepted' ? 'Route approved. You can proceed.' : 
-                      trafficStatus === 'rejected' ? 'Route rejected. Please take another way.' : 'Police response received');
+      const message = alert.message || responseData.policeResponse || alert.policeResponse ||
+        (trafficStatus === 'accepted' ? 'Route approved. You can proceed.' :
+          trafficStatus === 'rejected' ? 'Route rejected. Please take another way.' : 'Police response received');
 
       // Add to responses list
       const response = {
@@ -1995,13 +2046,13 @@ const MapScreen = ({ route, navigation }) => {
       });
       setPoliceResponses(prev => {
         console.log(`  📊 Current responses count: ${prev.length}`);
-        console.log(`  📊 Current responses:`, prev.map(r => ({ 
-          id: r.alertId, 
-          police: r.policeName, 
+        console.log(`  📊 Current responses:`, prev.map(r => ({
+          id: r.alertId,
+          police: r.policeName,
           status: r.trafficStatus,
-          respondedAt: r.respondedAt 
+          respondedAt: r.respondedAt
         })));
-        
+
         // Check if this response already exists to avoid duplicates
         // Match by alert ID first (most reliable), then by police and time
         const exists = prev.some(pr => {
@@ -2009,8 +2060,8 @@ const MapScreen = ({ route, navigation }) => {
             console.log(`  🔍 Duplicate found by alertId: ${alert.id}`);
             return true;
           }
-          const matchByPoliceAndTime = pr.policeId === response.policeId && 
-                 pr.respondedAt === response.respondedAt;
+          const matchByPoliceAndTime = pr.policeId === response.policeId &&
+            pr.respondedAt === response.respondedAt;
           if (matchByPoliceAndTime) {
             console.log(`  🔍 Duplicate found by policeId and respondedAt`);
             return true;
@@ -2024,10 +2075,10 @@ const MapScreen = ({ route, navigation }) => {
         const updated = [...prev, response];
         console.log(`✅ Responses updated: ${prev.length} → ${updated.length}`);
         console.log(`  ✅ New response added with trafficStatus: ${response.trafficStatus}`);
-        console.log(`  📊 All responses now:`, updated.map(r => ({ 
-          id: r.alertId, 
-          police: r.policeName, 
-          status: r.trafficStatus 
+        console.log(`  📊 All responses now:`, updated.map(r => ({
+          id: r.alertId,
+          police: r.policeName,
+          status: r.trafficStatus
         })));
         return updated;
       });
@@ -2038,21 +2089,21 @@ const MapScreen = ({ route, navigation }) => {
         const updated = prev.map(pa => {
           // Match by alert ID first (most reliable)
           const alertIdMatch = alert.id && pa.alertId === alert.id;
-          
+
           // Match by policeId/policeName (original police who received the alert)
           const policeMatch = (pa.policeId === response.policeId || pa.policeName === response.policeName);
-          
+
           // Since alerts are sent to ALL police (forAllPolice: true), if ANY police responds
           // and the alert is for this driver, we should update ALL pending alerts for this route
           // Match by checking if this is a pending alert for the same route (same start/end addresses)
-          const routeMatch = pa.startAddress === alert.startAddress && 
-                            pa.endAddress === alert.endAddress &&
-                            pa.status === 'pending' &&
-                            alert.driverName && 
-                            alert.driverName.toLowerCase() === userName?.toLowerCase();
-          
+          const routeMatch = pa.startAddress === alert.startAddress &&
+            pa.endAddress === alert.endAddress &&
+            pa.status === 'pending' &&
+            alert.driverName &&
+            alert.driverName.toLowerCase() === userName?.toLowerCase();
+
           const isMatch = alertIdMatch || policeMatch || routeMatch;
-          
+
           console.log(`  🔍 Matching alert ${pa.policeName}:`, {
             alertIdMatch,
             policeMatch,
@@ -2064,7 +2115,7 @@ const MapScreen = ({ route, navigation }) => {
             sameRoute: routeMatch,
             isMatch
           });
-          
+
           if (isMatch) {
             // Update status based on trafficStatus - mark as acknowledged to prevent duplicate requests
             let newStatus = 'acknowledged';
@@ -2073,11 +2124,11 @@ const MapScreen = ({ route, navigation }) => {
             } else if (trafficStatus === 'clear' || trafficStatus === 'busy') {
               newStatus = 'acknowledged'; // Also mark as acknowledged for legacy responses
             }
-            const updatedAlert = { 
-              ...pa, 
-              status: newStatus, 
-              response: message, 
-              trafficStatus: trafficStatus, 
+            const updatedAlert = {
+              ...pa,
+              status: newStatus,
+              response: message,
+              trafficStatus: trafficStatus,
               acknowledgedAt: new Date().toISOString(),
               respondedAt: response.respondedAt || new Date().toISOString(),
               policeResponse: message,
@@ -2093,8 +2144,8 @@ const MapScreen = ({ route, navigation }) => {
           }
           return pa;
         });
-        console.log('✅ Alerts updated and marked as acknowledged:', updated.map(a => ({ 
-          name: a.policeName, 
+        console.log('✅ Alerts updated and marked as acknowledged:', updated.map(a => ({
+          name: a.policeName,
           status: a.status,
           trafficStatus: a.trafficStatus
         })));
@@ -2103,14 +2154,14 @@ const MapScreen = ({ route, navigation }) => {
 
       // Show notification to ambulance driver based on status
       let statusEmoji, statusText, alertTitle, alertMessage, buttons;
-      
+
       if (trafficStatus === 'accepted') {
         console.log(`🚑 STEP 6: TrafficStatus is 'accepted' - Processing acceptance...`);
-        
+
         // CRITICAL: Set cooldown to prevent sending new alerts for a period
         lastAcceptanceTimeRef.current = Date.now();
         console.log(`⏰ Cooldown activated: No new alerts will be sent for ${ALERT_COOLDOWN_DURATION / 1000 / 60} minutes`);
-        
+
         statusEmoji = '✅';
         statusText = 'ROUTE ACCEPTED';
         alertTitle = `${statusEmoji} Route Approved - ${response.policeName}`;
@@ -2119,8 +2170,8 @@ const MapScreen = ({ route, navigation }) => {
           `Message: ${message || 'Route approved. You can proceed.'}\n\n` +
           `Area: ${response.area || 'N/A'}`;
         buttons = [
-          { 
-            text: 'Got It', 
+          {
+            text: 'Got It',
             style: 'default',
             onPress: () => {
               console.log('✅ AMBULANCE: User acknowledged acceptance');
@@ -2128,11 +2179,11 @@ const MapScreen = ({ route, navigation }) => {
             }
           }
         ];
-        
+
         console.log(`🚑 STEP 7: Sending push notification...`);
         // Send push notification
         sendPoliceResponseNotification(trafficStatus, response.policeName, response.policeOfficer, message);
-        
+
         console.log(`🚑 STEP 8: Showing alert badge...`);
         // Show alert badge
         setNewAcceptedResponse({
@@ -2143,12 +2194,12 @@ const MapScreen = ({ route, navigation }) => {
         });
         setShowAlertBadge(true);
         console.log(`✅ AMBULANCE: Alert badge shown!`);
-        
+
         // Auto-hide badge after 30 seconds
         setTimeout(() => {
           setShowAlertBadge(false);
         }, 30000);
-        
+
         console.log(`🚑 STEP 9: Preparing Alert.alert() popup...`);
       } else if (trafficStatus === 'rejected') {
         statusEmoji = '❌';
@@ -2159,8 +2210,8 @@ const MapScreen = ({ route, navigation }) => {
           `⚠️ IMPORTANT: ${message || 'Route rejected. Please take another way.'}\n\n` +
           `Area: ${response.area || 'N/A'}`;
         buttons = [
-          { 
-            text: 'Got It', 
+          {
+            text: 'Got It',
             style: 'default',
             onPress: () => console.log('✅ User acknowledged rejection')
           },
@@ -2183,8 +2234,8 @@ const MapScreen = ({ route, navigation }) => {
           `Message: ${message}\n\n` +
           `Area: ${response.area || 'N/A'}`;
         buttons = [
-          { 
-            text: 'Got It', 
+          {
+            text: 'Got It',
             style: 'default',
             onPress: () => console.log('✅ User acknowledged response')
           },
@@ -2197,7 +2248,7 @@ const MapScreen = ({ route, navigation }) => {
           }
         ].filter(Boolean);
       }
-      
+
       console.log(`🚑 STEP 10: Showing Alert.alert() popup to driver...`);
       console.log('  📋 Alert Title:', alertTitle);
       console.log('  📋 Alert Message:', alertMessage);
@@ -2283,7 +2334,7 @@ const MapScreen = ({ route, navigation }) => {
 
       // For now, simulate backend response with traffic status
       const trafficStatus = Math.random() > 0.5 ? 'clear' : 'congested';
-      
+
       // Show alert to ambulance driver
       Alert.alert(
         `🚨 Approaching ${toll.name}`,
@@ -2326,12 +2377,14 @@ const MapScreen = ({ route, navigation }) => {
       'Would you like to recalculate route avoiding congested tolls?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, Recalculate', onPress: () => {
-          // Trigger route recalculation
-          if (startLocation && endLocation) {
-            handleCreateRoute();
+        {
+          text: 'Yes, Recalculate', onPress: () => {
+            // Trigger route recalculation
+            if (startLocation && endLocation) {
+              handleCreateRoute();
+            }
           }
-        }}
+        }
       ]
     );
   };
@@ -2345,13 +2398,13 @@ const MapScreen = ({ route, navigation }) => {
           latitude: geocoded[0].latitude,
           longitude: geocoded[0].longitude,
         };
-        
+
         // Reverse geocode with timeout (non-blocking, max 1.5 seconds)
         const reverseGeocodePromise = Location.reverseGeocodeAsync(coords);
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Timeout')), 1500)
         );
-        
+
         try {
           const reverseGeocoded = await Promise.race([reverseGeocodePromise, timeoutPromise]);
           if (reverseGeocoded && reverseGeocoded.length > 0) {
@@ -2364,13 +2417,13 @@ const MapScreen = ({ route, navigation }) => {
               addr.country
             ].filter(Boolean);
             const actualAddress = addressParts.join(', ') || address;
-            
+
             console.log(`📍 Geocoded "${address}" to:`, {
               coords,
               actualAddress,
               fullDetails: addr
             });
-            
+
             return {
               ...coords,
               actualAddress: actualAddress,
@@ -2381,7 +2434,7 @@ const MapScreen = ({ route, navigation }) => {
           // Timeout or error - use original address, don't block
           console.warn('Reverse geocoding skipped (timeout or error), using original address');
         }
-        
+
         return {
           ...coords,
           actualAddress: address,
@@ -2401,11 +2454,11 @@ const MapScreen = ({ route, navigation }) => {
       // Try Mapbox Directions API first (better navigation features, turn-by-turn instructions)
       try {
         const routeData = await calculateRouteWithMapbox(start, end);
-        
+
         // Set distance and duration from Mapbox response
         setDistance(routeData.distance.toFixed(2));
         setDuration(routeData.duration);
-        
+
         // Store Mapbox instructions and full route data for navigation
         if (routeData.instructions && routeData.instructions.length > 0) {
           setNavigationInstructions(routeData.instructions);
@@ -2416,7 +2469,7 @@ const MapScreen = ({ route, navigation }) => {
           setNavigationInstructions([]);
           setMapboxRouteData(null);
         }
-        
+
         return routeData.coordinates;
       } catch (mapboxError) {
         console.warn('Mapbox route calculation failed, falling back to OSRM:', mapboxError.message);
@@ -2427,28 +2480,28 @@ const MapScreen = ({ route, navigation }) => {
       // Fallback to OSRM (Open Source Routing Machine)
       try {
         const url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson`;
-        
+
         const response = await fetch(url);
         const data = await response.json();
-        
+
         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
           const route = data.routes[0];
-          
+
           // Convert coordinates to latitude/longitude format
           const coordinates = route.geometry.coordinates.map(coord => ({
             latitude: coord[1],
             longitude: coord[0]
           }));
-          
+
           // Get distance and duration from API
           const distanceKm = (route.distance / 1000).toFixed(2);
           const durationMin = Math.ceil(route.duration / 60);
-          
+
           setDistance(distanceKm);
           setDuration(durationMin);
-          
+
           console.log(`✅ OSRM route calculated: ${distanceKm}km, ${durationMin}min, ${coordinates.length} points`);
-          
+
           return coordinates;
         } else {
           // Fallback to straight line if routing fails
@@ -2471,16 +2524,16 @@ const MapScreen = ({ route, navigation }) => {
 
     const trafficLights = [];
     const interval = Math.max(8, Math.floor(routeCoordinates.length / 12)); // Generate ~12 lights along route
-    
+
     // Generate traffic lights at regular intervals along the route
     for (let i = interval; i < routeCoordinates.length - interval; i += interval) {
       const point = routeCoordinates[i];
-      
+
       // Random status for variety
       const statuses = ['red', 'yellow', 'green'];
       const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
       const timeRemaining = randomStatus === 'red' ? 25 : randomStatus === 'yellow' ? 5 : 20;
-      
+
       trafficLights.push({
         id: `route-tl-${i}-${Date.now()}`,
         name: `Traffic Signal ${trafficLights.length + 1}`,
@@ -2496,7 +2549,7 @@ const MapScreen = ({ route, navigation }) => {
         isRealTime: false
       });
     }
-    
+
     console.log(`✅ Generated ${trafficLights.length} traffic lights along route`);
     return trafficLights;
   };
@@ -2505,26 +2558,26 @@ const MapScreen = ({ route, navigation }) => {
   const fallbackStraightLine = (start, end) => {
     const steps = 50;
     const route = [];
-    
+
     for (let i = 0; i <= steps; i++) {
       const lat = start.latitude + (end.latitude - start.latitude) * (i / steps);
       const lng = start.longitude + (end.longitude - start.longitude) * (i / steps);
       route.push({ latitude: lat, longitude: lng });
     }
-    
+
     // Calculate distance (Haversine formula)
     const R = 6371;
     const dLat = (end.latitude - start.latitude) * Math.PI / 180;
     const dLon = (end.longitude - start.longitude) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(start.latitude * Math.PI / 180) * Math.cos(end.latitude * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(start.latitude * Math.PI / 180) * Math.cos(end.latitude * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distanceKm = R * c;
-    
+
     setDistance(distanceKm.toFixed(2));
     setDuration(Math.ceil(distanceKm / 50 * 60));
-    
+
     return route;
   };
 
@@ -2543,16 +2596,16 @@ const MapScreen = ({ route, navigation }) => {
       if (startAddress === 'Current Location' && startLocation) {
         startCoords = startLocation;
         actualStartAddress = 'Current Location'; // Set immediately, update in background
-        
+
         // Reverse geocode current location in background (non-blocking with timeout)
         const reverseGeocodePromise = Location.reverseGeocodeAsync({
           latitude: startLocation.latitude,
           longitude: startLocation.longitude
         });
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Timeout')), 1500)
         );
-        
+
         Promise.race([reverseGeocodePromise, timeoutPromise])
           .then((reverseGeocoded) => {
             if (reverseGeocoded && reverseGeocoded.length > 0) {
@@ -2571,7 +2624,7 @@ const MapScreen = ({ route, navigation }) => {
           .catch((error) => {
             console.warn('Reverse geocoding skipped (timeout or error), using "Current Location"');
           });
-        
+
         console.log('✅ Using current location as start:', startCoords);
       } else {
         const geocodedResult = await geocodeAddress(startAddress);
@@ -2585,12 +2638,12 @@ const MapScreen = ({ route, navigation }) => {
           longitude: geocodedResult.longitude
         };
         actualStartAddress = geocodedResult.actualAddress || startAddress;
-        
+
         // Show confirmation if the found address differs significantly
-        if (geocodedResult.actualAddress && 
-            geocodedResult.actualAddress.toLowerCase() !== startAddress.toLowerCase() &&
-            !startAddress.toLowerCase().includes(geocodedResult.actualAddress.toLowerCase().split(',')[0].toLowerCase()) &&
-            !geocodedResult.actualAddress.toLowerCase().includes(startAddress.toLowerCase().split(',')[0].toLowerCase())) {
+        if (geocodedResult.actualAddress &&
+          geocodedResult.actualAddress.toLowerCase() !== startAddress.toLowerCase() &&
+          !startAddress.toLowerCase().includes(geocodedResult.actualAddress.toLowerCase().split(',')[0].toLowerCase()) &&
+          !geocodedResult.actualAddress.toLowerCase().includes(startAddress.toLowerCase().split(',')[0].toLowerCase())) {
           const confirmed = await new Promise((resolve) => {
             Alert.alert(
               '📍 Location Found',
@@ -2619,12 +2672,12 @@ const MapScreen = ({ route, navigation }) => {
         longitude: endGeocodedResult.longitude
       };
       const actualEndAddress = endGeocodedResult.actualAddress || endAddress;
-      
+
       // Show confirmation if the found address differs significantly
-      if (endGeocodedResult.actualAddress && 
-          endGeocodedResult.actualAddress.toLowerCase() !== endAddress.toLowerCase() &&
-          !endAddress.toLowerCase().includes(endGeocodedResult.actualAddress.toLowerCase().split(',')[0].toLowerCase()) &&
-          !endGeocodedResult.actualAddress.toLowerCase().includes(endAddress.toLowerCase().split(',')[0].toLowerCase())) {
+      if (endGeocodedResult.actualAddress &&
+        endGeocodedResult.actualAddress.toLowerCase() !== endAddress.toLowerCase() &&
+        !endAddress.toLowerCase().includes(endGeocodedResult.actualAddress.toLowerCase().split(',')[0].toLowerCase()) &&
+        !endGeocodedResult.actualAddress.toLowerCase().includes(endAddress.toLowerCase().split(',')[0].toLowerCase())) {
         const confirmed = await new Promise((resolve) => {
           Alert.alert(
             '📍 Destination Found',
@@ -2649,7 +2702,7 @@ const MapScreen = ({ route, navigation }) => {
 
       const route = await calculateRoute(startCoords, endCoords);
       setRouteCoordinates(route);
-      
+
       // Fetch traffic lights along the route (pass route coordinates for better generation)
       try {
         console.log('🔍 Fetching traffic lights along route...');
@@ -2682,10 +2735,10 @@ const MapScreen = ({ route, navigation }) => {
           }
         }
       }
-      
+
       setIsRouteActive(true);
       setRouteStartTime(new Date());
-      
+
       // Find the closest point on the route to current GPS position
       // This ensures route progress starts from where the ambulance actually is
       let startIndex = 0;
@@ -2700,7 +2753,7 @@ const MapScreen = ({ route, navigation }) => {
         });
         console.log(`📍 Route starts from index ${startIndex} (closest to current position, ${minDistance.toFixed(1)}m away)`);
       }
-      
+
       setRouteProgressIndex(startIndex);
       setRouteProgress(0);
       alertsClearedRef.current = false; // Reset cleared flag when new route is created
@@ -2745,16 +2798,40 @@ const MapScreen = ({ route, navigation }) => {
         });
       }
 
+      // SYNC: Trigger initial police alert check with FRESH data
+      // This ensures alerts are sent immediately with correct route info, preventing race conditions
+      console.log('🔄 SYNC: Triggering initial police alert sync...');
+      setIsSendingAlert(true); // Show syncing loading state
+
+      // Use the actual start location we have (startCoords)
+      const initialLocation = startCoords || currentPosition || location;
+
+      if (initialLocation) {
+        // Force check with overrides to bypass state/throttling
+        await checkNearbyPolice(initialLocation, {
+          startAddr: actualStartAddress,
+          endAddr: actualEndAddress,
+          routeCoords: route,
+          forceCheck: true
+        });
+        console.log('✅ SYNC: Initial police alert sync complete');
+      } else {
+        console.warn('⚠️ SYNC: Could not trigger initial alert - no location available');
+      }
+
+      setIsSendingAlert(false); // Hide syncing loading state
       setShowRouteModal(false);
       setIsCreatingRoute(false);
+
       Alert.alert(
-        '🚑 Route Started!', 
-        `Emergency route is now active!\n\nDistance: ${distance} km\nETA: ${duration} min\n\nPolice will be notified when you enter their area.`,
+        '🚑 Route Started!',
+        `Emergency route is now active!\n\nDistance: ${distance} km\nETA: ${duration} min\n\nPolice have been notified.`,
         [{ text: 'Start Journey', style: 'default' }]
       );
     } catch (error) {
       console.error('Error creating route:', error);
       setIsCreatingRoute(false);
+      setIsSendingAlert(false);
       Alert.alert('Error', 'Failed to create route. Please try again.');
     }
   };
@@ -2764,29 +2841,29 @@ const MapScreen = ({ route, navigation }) => {
     setIsFetchingCurrentLocation(true);
     try {
       console.log('📍 Fetching current location...');
-      
+
       // Get fresh current location (use Balanced for faster response)
       let currentLocation = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
         maximumAge: 5000, // Accept cached location up to 5 seconds old
       });
-      
+
       const currentCoords = {
         latitude: currentLocation.coords.latitude,
         longitude: currentLocation.coords.longitude,
         latitudeDelta: 0.0922,
         longitudeDelta: 0.0421,
       };
-      
+
       console.log('✅ Current location fetched:', currentCoords);
-      
+
       setStartLocation(currentCoords);
       setStartAddress('Current Location');
-      
+
       Alert.alert('✅ Success', 'Current location set as start point');
     } catch (error) {
       console.error('Error getting current location:', error);
-      
+
       // Fallback to existing location state
       if (location) {
         setStartLocation(location);
@@ -2845,8 +2922,8 @@ const MapScreen = ({ route, navigation }) => {
   const roleColor = role === 'ambulance' ? '#E74C3C' : '#2E86AB';
   const roleColorLight = role === 'ambulance' ? '#FF6B6B' : '#5DADE2';
   const roleColorDark = role === 'ambulance' ? '#C0392B' : '#1B4F72';
-  const roleGradient = role === 'ambulance' 
-    ? ['#E74C3C', '#FF6B6B', '#FF8E8E'] 
+  const roleGradient = role === 'ambulance'
+    ? ['#E74C3C', '#FF6B6B', '#FF8E8E']
     : ['#2E86AB', '#5DADE2', '#85C1E9'];
   const roleEmoji = role === 'ambulance' ? '🚑' : '🚔';
 
@@ -2855,35 +2932,35 @@ const MapScreen = ({ route, navigation }) => {
     if (role !== 'ambulance') {
       return null;
     }
-    
+
     const coord = currentPosition || location;
     if (!coord || !coord.latitude || !coord.longitude) {
-      console.log('⚠️ No valid coordinates for ambulance marker:', { 
+      console.log('⚠️ No valid coordinates for ambulance marker:', {
         hasCurrentPosition: !!currentPosition,
         hasLocation: !!location,
         currentPosition,
-        location 
+        location
       });
       return null;
     }
-    
+
     // Round coordinates to 5 decimal places (approximately 1m precision) - reduces sensitivity to small changes
     const roundedLat = Math.round(coord.latitude * 100000) / 100000;
     const roundedLng = Math.round(coord.longitude * 100000) / 100000;
     const coordKey = `${roundedLat},${roundedLng}`;
-    
+
     // Only log when coordinates actually change
     if (lastMarkerCoords.current !== coordKey) {
       lastMarkerCoords.current = coordKey;
-      console.log('🚑✅ Ambulance marker coordinates UPDATED:', { 
-        lat: roundedLat, 
+      console.log('🚑✅ Ambulance marker coordinates UPDATED:', {
+        lat: roundedLat,
         lng: roundedLng,
         coordKey,
         isRouteActive,
         hasRotation: !!markerRotation
       });
     }
-    
+
     return { roundedLat, roundedLng, coordKey };
   }, [role, currentPosition?.latitude, currentPosition?.longitude, location?.latitude, location?.longitude, isRouteActive]);
 
@@ -2897,7 +2974,7 @@ const MapScreen = ({ route, navigation }) => {
         <Text style={styles.loadingText}>Loading map...</Text>
         <Text style={styles.loadingSubtext}>Getting your location</Text>
         <View style={styles.loadingProgressBar}>
-          <Animated.View 
+          <Animated.View
             style={[
               styles.loadingProgressFill,
               { backgroundColor: roleColor }
@@ -2953,7 +3030,7 @@ const MapScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </Animated.View>
       )}
-      
+
       {/* Header */}
       <View style={[styles.header, { backgroundColor: roleColor }]}>
         <View style={styles.headerContent}>
@@ -2973,12 +3050,12 @@ const MapScreen = ({ route, navigation }) => {
               'Are you sure you want to logout?',
               [
                 { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Logout', 
+                {
+                  text: 'Logout',
                   onPress: async () => {
                     // Clean up all subscriptions and intervals
                     console.log('🚪 Logging out - cleaning up...');
-                    
+
                     // Stop location tracking
                     if (locationSubscriptionRef.current) {
                       try {
@@ -2991,14 +3068,14 @@ const MapScreen = ({ route, navigation }) => {
                         console.error('Error stopping location subscription:', error);
                       }
                     }
-                    
+
                     // Stop route animation
                     if (routeAnimationRef.current) {
                       clearInterval(routeAnimationRef.current);
                       routeAnimationRef.current = null;
                       console.log('✅ Route animation stopped');
                     }
-                    
+
                     // Clear all authentication data from AsyncStorage
                     // This prevents HomeScreen from auto-redirecting back to Map
                     try {
@@ -3013,7 +3090,7 @@ const MapScreen = ({ route, navigation }) => {
                     } catch (storageError) {
                       console.error('Error clearing storage:', storageError);
                     }
-                    
+
                     // Navigate to Home screen and clear navigation stack
                     // Use replace to completely replace the current screen
                     try {
@@ -3058,163 +3135,163 @@ const MapScreen = ({ route, navigation }) => {
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={styles.map}
-        initialRegion={location || {
-          latitude: 20.5937,
-          longitude: 78.9629,
-          latitudeDelta: 5.0,
-          longitudeDelta: 5.0,
-        }}
-        region={currentPosition ? {
-          latitude: currentPosition.latitude,
-          longitude: currentPosition.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        } : location}
-        showsUserLocation={false} // Always hide default blue dot - we use custom markers
-        showsMyLocationButton={true}
-        showsCompass={true}
-        showsTraffic={false}
-        loadingEnabled={true}
-        loadingIndicatorColor={roleColor}
-        onMapReady={() => {
-          setIsLoadingMap(false);
-          console.log('✅ Map loaded and ready');
-          if (role === 'ambulance' && markerCoords) {
-            console.log('🚑 Ambulance marker should be visible at:', markerCoords);
-          }
-        }}
-      >
-        {/* AMBULANCE MARKER - Always visible when coordinates are available */}
-        {role === 'ambulance' && markerCoords && (
-          <>
+          initialRegion={location || {
+            latitude: 20.5937,
+            longitude: 78.9629,
+            latitudeDelta: 5.0,
+            longitudeDelta: 5.0,
+          }}
+          region={currentPosition ? {
+            latitude: currentPosition.latitude,
+            longitude: currentPosition.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          } : location}
+          showsUserLocation={false} // Always hide default blue dot - we use custom markers
+          showsMyLocationButton={true}
+          showsCompass={true}
+          showsTraffic={false}
+          loadingEnabled={true}
+          loadingIndicatorColor={roleColor}
+          onMapReady={() => {
+            setIsLoadingMap(false);
+            console.log('✅ Map loaded and ready');
+            if (role === 'ambulance' && markerCoords) {
+              console.log('🚑 Ambulance marker should be visible at:', markerCoords);
+            }
+          }}
+        >
+          {/* AMBULANCE MARKER - Always visible when coordinates are available */}
+          {role === 'ambulance' && markerCoords && (
+            <>
+              <Marker
+                key={`ambulance-marker-${markerCoords.coordKey}`}
+                coordinate={{
+                  latitude: markerCoords.roundedLat,
+                  longitude: markerCoords.roundedLng,
+                }}
+                title="🚑 Ambulance"
+                description={isRouteActive
+                  ? `${userName} - ${currentPosition?.speed ? `Speed: ${(currentPosition.speed * 3.6).toFixed(0)} km/h - ` : ''}On Route`
+                  : `${userName} - Standing By`}
+                anchor={{ x: 0.5, y: 0.5 }}
+                flat={false}
+                tracksViewChanges={false}
+                zIndex={2000}
+              >
+                <View style={styles.ambulanceMainMarker}>
+                  <Text style={styles.ambulanceMainMarkerText}>🚑</Text>
+                </View>
+              </Marker>
+
+              {/* DEBUG: Simple test marker to ensure visibility */}
+              <Marker
+                key={`ambulance-test-${markerCoords.coordKey}`}
+                coordinate={{
+                  latitude: markerCoords.roundedLat,
+                  longitude: markerCoords.roundedLng,
+                }}
+                anchor={{ x: 0.5, y: 0.5 }}
+                zIndex={2001}
+              >
+                <View style={styles.ambulanceTestMarker}>
+                  <Text style={styles.ambulanceTestText}>🚑</Text>
+                </View>
+              </Marker>
+            </>
+          )}
+
+          {/* Current Location Marker - Blue dot showing device location (only show if not ambulance) */}
+          {location && role !== 'ambulance' && (
             <Marker
-              key={`ambulance-marker-${markerCoords.coordKey}`}
               coordinate={{
-                latitude: markerCoords.roundedLat,
-                longitude: markerCoords.roundedLng,
+                latitude: location.latitude,
+                longitude: location.longitude,
               }}
-              title="🚑 Ambulance"
-              description={isRouteActive 
-                ? `${userName} - ${currentPosition?.speed ? `Speed: ${(currentPosition.speed * 3.6).toFixed(0)} km/h - ` : ''}On Route`
-                : `${userName} - Standing By`}
+              title="📍 Current Location"
+              description="Your current device location"
               anchor={{ x: 0.5, y: 0.5 }}
-              flat={false}
+              zIndex={500}
+            >
+              <View style={styles.currentLocationMarker}>
+                <View style={styles.currentLocationPulse} />
+                <View style={styles.currentLocationDot} />
+              </View>
+            </Marker>
+          )}
+
+          {/* Route polyline */}
+          {routeCoordinates.length > 0 && (
+            <Polyline
+              coordinates={routeCoordinates}
+              strokeColor={roleColor}
+              strokeWidth={isTablet ? 5 : 4}
+            />
+          )}
+
+          {/* Start location marker - Hide for ambulance users (they have custom marker) */}
+          {startLocation && role !== 'ambulance' && (
+            <Marker
+              coordinate={startLocation}
+              title="Start Location"
+              description={startAddress || "Starting point"}
+              anchor={{ x: 0.5, y: 0.5 }}
               tracksViewChanges={false}
-              zIndex={2000}
             >
-              <View style={styles.ambulanceMainMarker}>
-                <Text style={styles.ambulanceMainMarkerText}>🚑</Text>
+              <View style={styles.startMarkerContainer}>
+                <View style={styles.startMarker}>
+                  <Text style={styles.startMarkerEmoji}>📍</Text>
+                </View>
               </View>
             </Marker>
-            
-            {/* DEBUG: Simple test marker to ensure visibility */}
+          )}
+
+          {/* End location marker */}
+          {endLocation && (
             <Marker
-              key={`ambulance-test-${markerCoords.coordKey}`}
-              coordinate={{
-                latitude: markerCoords.roundedLat,
-                longitude: markerCoords.roundedLng,
-              }}
+              coordinate={endLocation}
+              title="Destination"
+              description={endAddress || "Emergency location"}
               anchor={{ x: 0.5, y: 0.5 }}
-              zIndex={2001}
+              tracksViewChanges={false}
             >
-              <View style={styles.ambulanceTestMarker}>
-                <Text style={styles.ambulanceTestText}>🚑</Text>
+              <View style={styles.endMarkerContainer}>
+                <View style={styles.endMarker}>
+                  <Text style={styles.endMarkerEmoji}>🎯</Text>
+                </View>
               </View>
             </Marker>
-          </>
-        )}
+          )}
 
-        {/* Current Location Marker - Blue dot showing device location (only show if not ambulance) */}
-        {location && role !== 'ambulance' && (
-          <Marker
-            coordinate={{
-              latitude: location.latitude,
-              longitude: location.longitude,
-            }}
-            title="📍 Current Location"
-            description="Your current device location"
-            anchor={{ x: 0.5, y: 0.5 }}
-            zIndex={500}
-          >
-            <View style={styles.currentLocationMarker}>
-              <View style={styles.currentLocationPulse} />
-              <View style={styles.currentLocationDot} />
-            </View>
-          </Marker>
-        )}
-
-        {/* Route polyline */}
-        {routeCoordinates.length > 0 && (
-          <Polyline
-            coordinates={routeCoordinates}
-            strokeColor={roleColor}
-            strokeWidth={isTablet ? 5 : 4}
-          />
-        )}
-
-        {/* Start location marker - Hide for ambulance users (they have custom marker) */}
-        {startLocation && role !== 'ambulance' && (
-          <Marker
-            coordinate={startLocation}
-            title="Start Location"
-            description={startAddress || "Starting point"}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <View style={styles.startMarkerContainer}>
-              <View style={styles.startMarker}>
-                <Text style={styles.startMarkerEmoji}>📍</Text>
+          {/* Emergency markers */}
+          {emergencies.map((emergency) => (
+            <Marker
+              key={emergency.id}
+              coordinate={{
+                latitude: emergency.latitude,
+                longitude: emergency.longitude,
+              }}
+              title={emergency.title}
+              description={emergency.description}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
+              onPress={() => handleEmergencyPress(emergency)}
+            >
+              <View style={styles.emergencyMarkerContainer}>
+                <View style={styles.emergencyMarkerPulse} />
+                <View style={styles.emergencyMarker}>
+                  <Text style={styles.emergencyMarkerEmoji}>🚨</Text>
+                </View>
               </View>
-            </View>
-          </Marker>
-        )}
-
-        {/* End location marker */}
-        {endLocation && (
-          <Marker
-            coordinate={endLocation}
-            title="Destination"
-            description={endAddress || "Emergency location"}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <View style={styles.endMarkerContainer}>
-              <View style={styles.endMarker}>
-                <Text style={styles.endMarkerEmoji}>🎯</Text>
-              </View>
-            </View>
-          </Marker>
-        )}
-
-        {/* Emergency markers */}
-        {emergencies.map((emergency) => (
-          <Marker
-            key={emergency.id}
-            coordinate={{
-              latitude: emergency.latitude,
-              longitude: emergency.longitude,
-            }}
-            title={emergency.title}
-            description={emergency.description}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-            onPress={() => handleEmergencyPress(emergency)}
-          >
-            <View style={styles.emergencyMarkerContainer}>
-              <View style={styles.emergencyMarkerPulse} />
-              <View style={styles.emergencyMarker}>
-                <Text style={styles.emergencyMarkerEmoji}>🚨</Text>
-              </View>
-            </View>
-          </Marker>
-        ))}
+            </Marker>
+          ))}
 
           {/* Police user markers (current locations from backend) */}
           {nearbyPolice.map((police) => {
             // Round coordinates to prevent micro-changes that cause flickering
             const roundedLat = Math.round(police.latitude * 100000) / 100000;
             const roundedLng = Math.round(police.longitude * 100000) / 100000;
-            
+
             return (
               <React.Fragment key={`police-${police.id}`}>
                 {/* 2 km blue radius circle around police */}
@@ -3245,26 +3322,26 @@ const MapScreen = ({ route, navigation }) => {
                   zIndex={2}
                   tracksViewChanges={false} // Prevent unnecessary re-renders
                 />
-              <Marker
-                coordinate={{
-                  latitude: roundedLat,
-                  longitude: roundedLng,
-                }}
-                title={`🚔 ${police.name}`}
-                description={`${(police.distance * 1000).toFixed(0)}m away`}
-                anchor={{ x: 0.5, y: 0.5 }}
-                tracksViewChanges={false}
-                zIndex={3}
-              >
-                <View style={styles.policeMarkerContainer}>
-                  <View style={styles.policeMarkerPulse} />
-                  <View style={styles.policeMarker}>
-                    <View style={styles.policeIconCircle}>
-                      <Text style={styles.policeMarkerEmoji}>🚔</Text>
+                <Marker
+                  coordinate={{
+                    latitude: roundedLat,
+                    longitude: roundedLng,
+                  }}
+                  title={`🚔 ${police.name}`}
+                  description={`${(police.distance * 1000).toFixed(0)}m away`}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                  zIndex={3}
+                >
+                  <View style={styles.policeMarkerContainer}>
+                    <View style={styles.policeMarkerPulse} />
+                    <View style={styles.policeMarker}>
+                      <View style={styles.policeIconCircle}>
+                        <Text style={styles.policeMarkerEmoji}>🚔</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </Marker>
+                </Marker>
               </React.Fragment>
             );
           })}
@@ -3312,7 +3389,7 @@ const MapScreen = ({ route, navigation }) => {
                 <Text style={styles.speedUnit}>km/h</Text>
               </View>
             )}
-            
+
             {/* Next Turn Instruction - Google Maps Style */}
             {nextTurn && (
               <View style={styles.nextTurnContainer}>
@@ -3323,7 +3400,7 @@ const MapScreen = ({ route, navigation }) => {
                   <Text style={styles.turnInstruction}>{nextTurn.instruction}</Text>
                   {distanceToNextTurn !== null && (
                     <Text style={styles.turnDistance}>
-                      {distanceToNextTurn > 1000 
+                      {distanceToNextTurn > 1000
                         ? `${(distanceToNextTurn / 1000).toFixed(1)} km`
                         : `${distanceToNextTurn} m`}
                     </Text>
@@ -3331,7 +3408,7 @@ const MapScreen = ({ route, navigation }) => {
                 </View>
               </View>
             )}
-            
+
             {/* Continue straight indicator when no turn */}
             {!nextTurn && isRouteActive && (
               <View style={styles.nextTurnContainer}>
@@ -3342,7 +3419,7 @@ const MapScreen = ({ route, navigation }) => {
                   <Text style={styles.turnInstruction}>Continue straight</Text>
                   {remainingDistance !== null && (
                     <Text style={styles.turnDistance}>
-                      {remainingDistance > 1 
+                      {remainingDistance > 1
                         ? `${remainingDistance.toFixed(1)} km to destination`
                         : `${(remainingDistance * 1000).toFixed(0)} m to destination`}
                     </Text>
@@ -3350,7 +3427,7 @@ const MapScreen = ({ route, navigation }) => {
                 </View>
               </View>
             )}
-            
+
             {/* Current Street and Progress */}
             <View style={styles.navigationFooter}>
               <Text style={styles.currentStreet} numberOfLines={1}>
@@ -3403,7 +3480,7 @@ const MapScreen = ({ route, navigation }) => {
               onPress={() => {
                 setIsRouteActive(true);
                 setRouteStartTime(new Date());
-                
+
                 // Find the closest point on the route to current GPS position
                 // This ensures route progress starts from where the ambulance actually is
                 let startIndex = 0;
@@ -3418,10 +3495,10 @@ const MapScreen = ({ route, navigation }) => {
                   });
                   console.log(`📍 Route starts from index ${startIndex} (closest to current position, ${minDistance.toFixed(1)}m away)`);
                 }
-                
+
                 setRouteProgressIndex(startIndex);
                 setRouteProgress(0);
-                
+
                 // DON'T move marker to route start - keep it at actual GPS position
                 // The marker should stay at the current GPS location
                 if (routeCoordinates.length > 0 && role === 'ambulance') {
@@ -3453,7 +3530,7 @@ const MapScreen = ({ route, navigation }) => {
                     }
                   }
                 }
-                
+
                 Alert.alert('🚑 Journey Started!', 'Navigation is now active. Follow the route instructions.');
               }}
             >
@@ -3486,7 +3563,7 @@ const MapScreen = ({ route, navigation }) => {
           onPress={() => {
             const newCollapsed = !isPanelCollapsed;
             setIsPanelCollapsed(newCollapsed);
-            
+
             // Animate panel slide
             // Note: useNativeDriver: false for height/maxHeight animations
             Animated.timing(panelSlideAnim, {
@@ -3529,11 +3606,10 @@ const MapScreen = ({ route, navigation }) => {
           },
         ]}
       >
-        <ScrollView 
-          style={styles.bottomPanelScrollView}
-          contentContainerStyle={styles.bottomPanelContent}
-          showsVerticalScrollIndicator={true}
+        <ScrollView
+          style={[styles.bottomPanelScrollView, styles.bottomPanelContent]}
           nestedScrollEnabled={true}
+          showsVerticalScrollIndicator={true}
         >
           {/* Stats Bar for Ambulance */}
           {role === 'ambulance' && policeAlerts.length > 0 && (
@@ -3557,11 +3633,29 @@ const MapScreen = ({ route, navigation }) => {
             </View>
           )}
 
+          {/* Route Status - Moved to Top for Better Visibility */}
+          {isRouteActive && (
+            <View style={styles.routeStatusContainer}>
+              <View style={styles.routeStatusCard}>
+                <Text style={styles.routeStatusTitle}>🚑 Emergency Route Active</Text>
+                <Text style={styles.routeStatusInfo}>
+                  Distance: {distance} km | ETA: {duration} min
+                </Text>
+                <Text style={styles.routeStatusTime}>
+                  Started: {routeStartTime ? routeStartTime.toLocaleTimeString() : 'Unknown'}
+                </Text>
+              </View>
+            </View>
+          )}
+
           {/* Police Responses Section */}
           {role === 'ambulance' && policeResponses.length > 0 && (
             <View style={styles.policeResponsesSection}>
               <View style={styles.alertSectionHeader}>
-                <Text style={styles.policeResponsesTitle}>📢 Police Responses ({policeResponses.length})</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Ionicons name="megaphone" size={20} color="#27AE60" style={{ marginRight: 8 }} />
+                  <Text style={styles.policeResponsesTitle}>Police Responses ({policeResponses.length})</Text>
+                </View>
                 <TouchableOpacity
                   style={styles.clearButton}
                   onPress={() => {
@@ -3573,8 +3667,10 @@ const MapScreen = ({ route, navigation }) => {
                         {
                           text: 'Clear',
                           style: 'destructive',
+                          style: 'destructive',
                           onPress: () => {
                             setPoliceResponses([]);
+                            processedResponsesRef.current = new Set(); // Reset processed responses tracking
                             console.log('✅ All police responses cleared.');
                           }
                         }
@@ -3585,56 +3681,79 @@ const MapScreen = ({ route, navigation }) => {
                   <Text style={styles.clearButtonText}>Clear</Text>
                 </TouchableOpacity>
               </View>
-              <FlatList
-                data={[...policeResponses].reverse()}
-                keyExtractor={(item, index) => `response-${item.alertId || item.policeId || index}-${item.respondedAt || index}`}
-                renderItem={({ item: response }) => (
-                  <View style={[
-                    styles.policeResponseCard,
-                    { 
-                      backgroundColor: 
-                        response.trafficStatus === 'accepted' ? '#27AE60' :
-                        response.trafficStatus === 'rejected' ? '#E74C3C' :
-                        response.trafficStatus === 'clear' ? '#27AE60' : '#E74C3C'
-                    }
-                  ]}>
-                    <View style={styles.responseCardHeader}>
-                      <Text style={styles.policeResponseIcon}>
-                        {response.trafficStatus === 'accepted' ? '✅' :
-                         response.trafficStatus === 'rejected' ? '❌' :
-                         response.trafficStatus === 'clear' ? '✅' : '⚠️'}
-                      </Text>
-                      <View style={styles.responseCardHeaderText}>
-                        <Text style={styles.policeResponseName}>{response.policeName}</Text>
-                        <Text style={styles.policeResponseStatus}>
-                          {response.trafficStatus === 'accepted' ? 'ROUTE ACCEPTED' :
-                           response.trafficStatus === 'rejected' ? 'ROUTE REJECTED' :
-                           response.trafficStatus === 'clear' ? 'ROUTE CLEAR' : 'HEAVY TRAFFIC'}
+              <View style={styles.responsesList}>
+                {(() => {
+                  const accepted = policeResponses.find(r => r.trafficStatus === 'accepted' || r.trafficStatus === 'clear');
+                  const displayData = accepted ? [accepted] : [...policeResponses].reverse();
+
+                  return displayData.map((response, index) => (
+                    <View
+                      key={`response-${response.alertId || response.policeId || index}-${response.respondedAt || index}`}
+                      style={[
+                        styles.policeResponseCard,
+                        {
+                          borderLeftColor:
+                            response.trafficStatus === 'accepted' ? '#27AE60' : // Strong Green
+                              response.trafficStatus === 'rejected' ? '#C0392B' : // Strong Red
+                                response.trafficStatus === 'clear' ? '#27AE60' : '#E67E22' // Green or Orange
+                        }
+                      ]}
+                    >
+                      <View style={styles.responseCardHeader}>
+                        <View style={styles.responseCardHeaderText}>
+                          <Text style={styles.policeResponseName}>{response.policeName}</Text>
+                          <View style={{
+                            backgroundColor: response.trafficStatus === 'accepted' || response.trafficStatus === 'clear' ? 'rgba(39, 174, 96, 0.1)' :
+                              response.trafficStatus === 'rejected' ? 'rgba(192, 57, 43, 0.1)' : 'rgba(243, 156, 18, 0.1)',
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 4,
+                            alignSelf: 'flex-start',
+                            marginBottom: 4,
+                            flexDirection: 'row',
+                            alignItems: 'center'
+                          }}>
+                            <Ionicons
+                              name={
+                                response.trafficStatus === 'accepted' ? 'checkmark-circle' :
+                                  response.trafficStatus === 'rejected' ? 'close-circle' :
+                                    response.trafficStatus === 'clear' ? 'checkmark-circle' : 'alert-circle'
+                              }
+                              size={12}
+                              color={
+                                response.trafficStatus === 'accepted' ? '#27AE60' :
+                                  response.trafficStatus === 'rejected' ? '#C0392B' :
+                                    response.trafficStatus === 'clear' ? '#27AE60' : '#E67E22'
+                              }
+                              style={{ marginRight: 4 }}
+                            />
+                            <Text style={[styles.policeResponseStatus, {
+                              color: response.trafficStatus === 'accepted' ? '#27AE60' :
+                                response.trafficStatus === 'rejected' ? '#C0392B' :
+                                  response.trafficStatus === 'clear' ? '#27AE60' : '#E67E22'
+                            }]}>
+                              {response.trafficStatus === 'accepted' ? 'ACCEPTED' :
+                                response.trafficStatus === 'rejected' ? 'REJECTED' :
+                                  response.trafficStatus === 'clear' ? 'CLEAR' : 'TRAFFIC'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                      {response.message && (
+                        <Text style={styles.policeResponseMessage} numberOfLines={2}>
+                          {response.message}
                         </Text>
+                      )}
+                      <View style={styles.responseCardFooter}>
+                        <Text style={styles.policeResponseOfficer}>
+                          👮 {response.policeOfficer || 'Officer'}
+                        </Text>
+                        <Text style={styles.policeResponseTime}>🕐 {response.time}</Text>
                       </View>
                     </View>
-                    {response.message && (
-                      <Text style={styles.policeResponseMessage} numberOfLines={2}>
-                        {response.message}
-                      </Text>
-                    )}
-                    <View style={styles.responseCardFooter}>
-                      <Text style={styles.policeResponseOfficer}>
-                        👮 {response.policeOfficer || 'On Duty'}
-                      </Text>
-                      <Text style={styles.policeResponseTime}>🕐 {response.time}</Text>
-                    </View>
-                  </View>
-                )}
-                scrollEnabled={true}
-                showsVerticalScrollIndicator={true}
-                nestedScrollEnabled={true}
-                style={styles.responsesList}
-                contentContainerStyle={styles.responsesListContent}
-                ItemSeparatorComponent={() => <View style={styles.responseSeparator} />}
-                maxToRenderPerBatch={5}
-                windowSize={5}
-              />
+                  ));
+                })()}
+              </View>
             </View>
           )}
 
@@ -3642,7 +3761,10 @@ const MapScreen = ({ route, navigation }) => {
           {role === 'ambulance' && policeAlerts.length > 0 && (
             <View style={styles.policeAlertsSection}>
               <View style={styles.alertSectionHeader}>
-                <Text style={styles.policeAlertsTitle}>🚔 Police Alerts Sent ({policeAlerts.length})</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Ionicons name="notifications" size={20} color="#333" style={{ marginRight: 8 }} />
+                  <Text style={styles.policeAlertsTitle}>Police Alerts Sent ({policeAlerts.length})</Text>
+                </View>
                 <TouchableOpacity
                   style={styles.clearButton}
                   onPress={() => {
@@ -3667,51 +3789,82 @@ const MapScreen = ({ route, navigation }) => {
                   <Text style={styles.clearButtonText}>Clear</Text>
                 </TouchableOpacity>
               </View>
-              <FlatList
-                data={[...policeAlerts].reverse()}
-                keyExtractor={(item, index) => `alert-${item.alertId || item.policeId || index}-${item.timestamp || index}`}
-                renderItem={({ item: alert }) => {
+              <ScrollView
+                style={styles.alertsList}
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+              >
+                {[...policeAlerts].reverse().map((alert, index) => {
                   const isResponded = alert.status === 'acknowledged' || alert.status === 'responded' || alert.trafficStatus === 'accepted' || alert.trafficStatus === 'rejected';
-                  const isPending = !isResponded && (alert.status === 'pending' || !alert.status);
                   return (
-                    <View style={[
-                      styles.policeAlertCard,
-                      { 
-                        backgroundColor: isResponded ? '#27AE60' : 
-                          alert.status === 'clear' ? '#27AE60' : 
-                          alert.status === 'busy' ? '#E74C3C' : '#FFA500' 
-                      }
-                    ]}>
+                    <View
+                      key={`alert-${alert.alertId || alert.policeId || index}-${alert.timestamp || index}`}
+                      style={[
+                        styles.policeAlertCard,
+                        {
+                          borderLeftColor: isResponded ? '#27AE60' :
+                            alert.status === 'clear' ? '#27AE60' :
+                              alert.status === 'busy' ? '#C0392B' : '#F39C12'
+                        }
+                      ]}
+                    >
                       <View style={styles.alertCardContent}>
                         <View style={styles.alertCardLeft}>
-                          <Text style={styles.alertCardIcon}>
-                            {isResponded ? '✅' :
-                             alert.status === 'clear' ? '✅' : 
-                             alert.status === 'busy' ? '⚠️' : '⏳'}
-                          </Text>
+                          <Ionicons
+                            name="notifications"
+                            size={24}
+                            color={
+                              isResponded ? '#27AE60' :
+                                alert.status === 'clear' ? '#27AE60' :
+                                  alert.status === 'busy' ? '#C0392B' : '#F39C12'
+                            }
+                          />
                         </View>
                         <View style={styles.alertCardRight}>
                           <Text style={styles.policeAlertName}>{alert.policeName}</Text>
-                          <Text style={styles.policeAlertStatus}>
-                            {isResponded ? 'RESPONDED' :
-                             alert.status === 'clear' ? 'CLEAR' : 
-                             alert.status === 'busy' ? 'BUSY' : 'PENDING'}
-                          </Text>
+                          <View style={{
+                            backgroundColor: isResponded ? 'rgba(39, 174, 96, 0.1)' :
+                              alert.status === 'clear' ? 'rgba(39, 174, 96, 0.1)' :
+                                alert.status === 'busy' ? 'rgba(192, 57, 43, 0.1)' : 'rgba(243, 156, 18, 0.1)',
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 4,
+                            alignSelf: 'flex-start',
+                            marginBottom: 4,
+                            flexDirection: 'row',
+                            alignItems: 'center'
+                          }}>
+                            <Ionicons
+                              name={
+                                isResponded ? 'checkmark-circle' :
+                                  alert.status === 'clear' ? 'checkmark-circle' :
+                                    alert.status === 'busy' ? 'alert-circle' : 'time'
+                              }
+                              size={12}
+                              color={
+                                isResponded ? '#27AE60' :
+                                  alert.status === 'clear' ? '#27AE60' :
+                                    alert.status === 'busy' ? '#C0392B' : '#F39C12'
+                              }
+                              style={{ marginRight: 4 }}
+                            />
+                            <Text style={[styles.policeAlertStatus, {
+                              color: isResponded ? '#27AE60' :
+                                alert.status === 'clear' ? '#27AE60' :
+                                  alert.status === 'busy' ? '#C0392B' : '#F39C12'
+                            }]}>
+                              {isResponded ? 'RESPONDED' :
+                                alert.status === 'clear' ? 'CLEAR' :
+                                  alert.status === 'busy' ? 'BUSY' : 'PENDING'}
+                            </Text>
+                          </View>
                           <Text style={styles.policeAlertTime}>🕐 {alert.time}</Text>
                         </View>
                       </View>
                     </View>
                   );
-                }}
-                scrollEnabled={true}
-                showsVerticalScrollIndicator={true}
-                nestedScrollEnabled={true}
-                style={styles.alertsList}
-                contentContainerStyle={styles.alertsListContent}
-                ItemSeparatorComponent={() => <View style={styles.alertSeparator} />}
-                maxToRenderPerBatch={5}
-                windowSize={5}
-              />
+                })}
+              </ScrollView>
             </View>
           )}
 
@@ -3719,7 +3872,10 @@ const MapScreen = ({ route, navigation }) => {
           {role === 'ambulance' && tollAlerts.length > 0 && (
             <View style={styles.tollAlertsSection}>
               <View style={styles.alertSectionHeader}>
-                <Text style={styles.tollAlertsTitle}>🚨 Recent Toll Alerts ({tollAlerts.length})</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Ionicons name="cash" size={20} color="#2C3E50" style={{ marginRight: 8 }} />
+                  <Text style={styles.tollAlertsTitle}>Recent Toll Alerts ({tollAlerts.length})</Text>
+                </View>
                 <TouchableOpacity
                   style={styles.clearButton}
                   onPress={() => {
@@ -3761,119 +3917,31 @@ const MapScreen = ({ route, navigation }) => {
           )}
 
 
-        {/* Route Status */}
-        {isRouteActive && (
-          <View style={styles.routeStatusContainer}>
-            <View style={styles.routeStatusCard}>
-              <Text style={styles.routeStatusTitle}>🚑 Emergency Route Active</Text>
-              <Text style={styles.routeStatusInfo}>
-                Distance: {distance} km | ETA: {duration} min
-              </Text>
-              <Text style={styles.routeStatusTime}>
-                Started: {routeStartTime ? routeStartTime.toLocaleTimeString() : 'Unknown'}
-              </Text>
-            </View>
-          </View>
-        )}
+          {/* Route Status Moved from here */}
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{policeAlerts.length}</Text>
-            <Text style={styles.statLabel}>Alerts Sent</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{policeResponses.length}</Text>
-            <Text style={styles.statLabel}>Responses</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{tollAlerts.length}</Text>
-            <Text style={styles.statLabel}>Toll Alerts</Text>
-          </View>
-          <View style={styles.statCard}>
-          </View>
-        </View>
+          {/* Redundant Stats Container Removed */}
 
-        <TouchableOpacity
-          style={[styles.createRouteButton, { backgroundColor: roleColor }]}
-          onPress={() => setShowRouteModal(true)}
-        >
-          <Text style={styles.createRouteButtonText}>🗺️ Create Route</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.statusButton, { backgroundColor: roleColor }]}
-          onPress={async () => {
-            console.log('\n📊 === AMBULANCE STATUS ===');
-            console.log('Alerts sent:', policeAlerts.length);
-            console.log('Responses received:', policeResponses.length);
-            console.log('Route active:', isRouteActive);
-            console.log('Route points:', routeCoordinates.length);
-            
-            // Check backend
-            try {
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 5000);
-              
-              let response;
-              try {
-                response = await fetch(API_ENDPOINTS.POLICE_ALERTS, {
-                  method: 'GET',
-                  headers: { 'Content-Type': 'application/json' },
-                  signal: controller.signal,
-                });
-                clearTimeout(timeoutId);
-              } catch (fetchError) {
-                clearTimeout(timeoutId);
-                if (fetchError.name === 'AbortError') {
-                  console.log('⚠️ Backend check timed out');
-                } else {
-                  console.log('⚠️ Backend unavailable - service may not be running');
-                }
-                return;
-              }
-              
-              if (response && response.ok) {
-                const data = await response.json();
-                console.log('\nBackend has:', data.alerts?.length || 0, 'alerts');
-                data.alerts?.forEach(alert => {
-                  console.log(`  - ${alert.policeName}: ${alert.status}`);
-                });
-              } else {
-                console.log('⚠️ Backend returned error response');
-              }
-            } catch (e) {
-              // Silently handle - backend may not be running
-              if (!e.message?.includes('Network request failed')) {
-                console.warn('⚠️ Backend check error:', e.message);
-              }
-            }
-            
-            console.log('=== END STATUS ===\n');
-            
-            Alert.alert(
-              '📊 Ambulance Status',
-              `Alerts Sent: ${policeAlerts.length}\n` +
-              `Responses: ${policeResponses.length}\n` +
-              `Route Active: ${isRouteActive ? 'Yes' : 'No'}\n` +
-              `Route Points: ${routeCoordinates.length}\n\n` +
-              `Check console for backend status.`,
-              [{ text: 'OK' }]
-            );
-          }}
-        >
-          <Text style={styles.statusButtonText}>📊 Status</Text>
-        </TouchableOpacity>
-
-        {/* Manual Check for Responses Button */}
-        {role === 'ambulance' && policeAlerts.length > 0 && (
           <TouchableOpacity
-            style={[styles.checkResponseButton, { backgroundColor: '#27AE60' }]}
+            style={[styles.createRouteButton, { backgroundColor: roleColor }]}
+            onPress={() => setShowRouteModal(true)}
+          >
+            <Text style={styles.createRouteButtonText}>🗺️ Create Route</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.statusButton, { backgroundColor: roleColor }]}
             onPress={async () => {
-              console.log('\n🔄 === MANUAL RESPONSE CHECK ===');
+              console.log('\n📊 === AMBULANCE STATUS ===');
+              console.log('Alerts sent:', policeAlerts.length);
+              console.log('Responses received:', policeResponses.length);
+              console.log('Route active:', isRouteActive);
+              console.log('Route points:', routeCoordinates.length);
+
+              // Check backend
               try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
-                
+
                 let response;
                 try {
                   response = await fetch(API_ENDPOINTS.POLICE_ALERTS, {
@@ -3884,139 +3952,199 @@ const MapScreen = ({ route, navigation }) => {
                   clearTimeout(timeoutId);
                 } catch (fetchError) {
                   clearTimeout(timeoutId);
-                  Alert.alert(
-                    '⚠️ Service Unavailable',
-                    'Backend service is not available. Please ensure the server is running.',
-                    [{ text: 'OK' }]
-                  );
+                  if (fetchError.name === 'AbortError') {
+                    console.log('⚠️ Backend check timed out');
+                  } else {
+                    console.log('⚠️ Backend unavailable - service may not be running');
+                  }
                   return;
                 }
-                
-                if (!response || !response.ok) {
-                  Alert.alert('⚠️ Error', 'Failed to fetch alerts from backend');
-                  return;
-                }
-                
-                const data = await response.json();
-                console.log('📦 Backend response:', data);
-                
-                if (data.success && data.alerts) {
-                  console.log(`Found ${data.alerts.length} alerts in backend`);
-                  data.alerts.forEach(alert => {
-                    console.log(`  - ${alert.policeName}: status=${alert.status}, trafficStatus=${alert.trafficStatus}`);
-                  });
-                  
-                  const responded = data.alerts.filter(a => a.status === 'responded');
-                  Alert.alert(
-                    'Manual Check Complete',
-                    `Total alerts: ${data.alerts.length}\n` +
-                    `Responded: ${responded.length}\n\n` +
-                    `${responded.length > 0 ? '✅ Responses found! Processing...' : '⏳ No responses yet'}`,
-                    [{ text: 'OK' }]
-                  );
-                  
-                  // Process any responses
-                  responded.forEach(alert => {
-                    // Create a unique identifier for this response
-                    const responseId = alert.id || 
-                      `${alert.policeId || alert.policeName}_${alert.respondedAt || alert.acknowledgedAt || Date.now()}`;
-                    
-                    // Check both the processed responses ref and the state
-                    const alreadyProcessedInRef = processedResponsesRef.current.has(responseId);
-                    const alreadyProcessedInState = policeResponses.some(pr => 
-                      pr.policeId === alert.policeId && pr.respondedAt === alert.respondedAt
-                    );
-                    
-                    if (!alreadyProcessedInRef && !alreadyProcessedInState) {
-                      handlePoliceResponse(alert);
-                    } else {
-                      console.log(`⏭️ Response ${responseId} already processed, skipping...`);
-                    }
-                  });
-                }
-              } catch (error) {
-                // Handle network errors gracefully
-                if (error.message?.includes('Network request failed')) {
-                  Alert.alert(
-                    '⚠️ Service Unavailable',
-                    'Backend service is not available. Please ensure the server is running.',
-                    [{ text: 'OK' }]
-                  );
-                } else {
-                  console.warn('⚠️ Error checking responses:', error.message);
-                  Alert.alert('⚠️ Error', error.message || 'Failed to check responses');
-                }
-              }
-            }}
-          >
-            <Text style={styles.checkResponseButtonText}>🔍 Check for Responses Now</Text>
-          </TouchableOpacity>
-        )}
 
-        {/* Test Police Alert Button - For Testing */}
-        {role === 'ambulance' && (
-          <TouchableOpacity
-            style={[styles.testAlertButton, { backgroundColor: '#9B59B6' }]}
-            onPress={() => {
-              console.log('🧪 TEST MODE: Setting up test scenario...');
-              
-              // Check if route exists
-              if (routeCoordinates.length === 0) {
-                console.log('⚠️ No route exists. Creating test route...');
-                
-                // Create a test route from Vizianagaram to Visakhapatnam
-                const testStart = { latitude: 18.1167, longitude: 83.4167 }; // Vizianagaram
-                const testEnd = { latitude: 17.6868, longitude: 83.2185 }; // Visakhapatnam
-                
-                // Create simple route coordinates (straight line for testing)
-                const testRouteCoords = [];
-                const steps = 20;
-                for (let i = 0; i <= steps; i++) {
-                  testRouteCoords.push({
-                    latitude: testStart.latitude + (testEnd.latitude - testStart.latitude) * (i / steps),
-                    longitude: testStart.longitude + (testEnd.longitude - testStart.longitude) * (i / steps)
+                if (response && response.ok) {
+                  const data = await response.json();
+                  console.log('\nBackend has:', data.alerts?.length || 0, 'alerts');
+                  data.alerts?.forEach(alert => {
+                    console.log(`  - ${alert.policeName}: ${alert.status}`);
                   });
+                } else {
+                  console.log('⚠️ Backend returned error response');
                 }
-                
-                setStartLocation(testStart);
-                setEndLocation(testEnd);
-                setStartAddress('Vizianagaram, Andhra Pradesh');
-                setEndAddress('Visakhapatnam, Andhra Pradesh');
-                setRouteCoordinates(testRouteCoords);
-                setIsRouteActive(true);
-                setRouteStartTime(new Date());
-                setDistance('45.2');
-                setDuration('55');
-                
-                console.log('✅ Test route created:', {
-                  start: 'Vizianagaram',
-                  end: 'Visakhapatnam',
-                  points: testRouteCoords.length
-                });
+              } catch (e) {
+                // Silently handle - backend may not be running
+                if (!e.message?.includes('Network request failed')) {
+                  console.warn('⚠️ Backend check error:', e.message);
+                }
               }
-              
-              // Use test location near Vizianagaram Central Junction
-              const testLocation = {
-                latitude: 18.1167,
-                longitude: 83.4167
-              };
-              
-              console.log('🧪 TEST MODE: Triggering police alert check...');
-              checkNearbyPolice(testLocation);
-              
+
+              console.log('=== END STATUS ===\n');
+
               Alert.alert(
-                '🧪 Test Alert with Route',
-                `${routeCoordinates.length > 0 ? '✅ Route exists!' : '✅ Test route created!'}\n\n` +
-                `Route: ${startAddress || 'Vizianagaram'} → ${endAddress || 'Visakhapatnam'}\n` +
-                `Points: ${routeCoordinates.length || 20}\n\n` +
-                `Police alerts triggered.`,
+                '📊 Ambulance Status',
+                `Alerts Sent: ${policeAlerts.length}\n` +
+                `Responses: ${policeResponses.length}\n` +
+                `Route Active: ${isRouteActive ? 'Yes' : 'No'}\n` +
+                `Route Points: ${routeCoordinates.length}\n\n` +
+                `Check console for backend status.`,
                 [{ text: 'OK' }]
               );
             }}
           >
-            <Text style={styles.testAlertButtonText}>🧪 Test Route</Text>
+            <Text style={styles.statusButtonText}>📊 Status</Text>
           </TouchableOpacity>
-        )}
+
+          {/* Manual Check for Responses Button */}
+          {role === 'ambulance' && policeAlerts.length > 0 && (
+            <TouchableOpacity
+              style={[styles.checkResponseButton, { backgroundColor: '#27AE60' }]}
+              onPress={async () => {
+                console.log('\n🔄 === MANUAL RESPONSE CHECK ===');
+                try {
+                  const controller = new AbortController();
+                  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                  let response;
+                  try {
+                    response = await fetch(API_ENDPOINTS.POLICE_ALERTS, {
+                      method: 'GET',
+                      headers: { 'Content-Type': 'application/json' },
+                      signal: controller.signal,
+                    });
+                    clearTimeout(timeoutId);
+                  } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    Alert.alert(
+                      '⚠️ Service Unavailable',
+                      'Backend service is not available. Please ensure the server is running.',
+                      [{ text: 'OK' }]
+                    );
+                    return;
+                  }
+
+                  if (!response || !response.ok) {
+                    Alert.alert('⚠️ Error', 'Failed to fetch alerts from backend');
+                    return;
+                  }
+
+                  const data = await response.json();
+                  console.log('📦 Backend response:', data);
+
+                  if (data.success && data.alerts) {
+                    console.log(`Found ${data.alerts.length} alerts in backend`);
+                    data.alerts.forEach(alert => {
+                      console.log(`  - ${alert.policeName}: status=${alert.status}, trafficStatus=${alert.trafficStatus}`);
+                    });
+
+                    const responded = data.alerts.filter(a => a.status === 'responded');
+                    Alert.alert(
+                      'Manual Check Complete',
+                      `Total alerts: ${data.alerts.length}\n` +
+                      `Responded: ${responded.length}\n\n` +
+                      `${responded.length > 0 ? '✅ Responses found! Processing...' : '⏳ No responses yet'}`,
+                      [{ text: 'OK' }]
+                    );
+
+                    // Process any responses
+                    responded.forEach(alert => {
+                      // Create a unique identifier for this response
+                      const responseId = alert.id ||
+                        `${alert.policeId || alert.policeName}_${alert.respondedAt || alert.acknowledgedAt || Date.now()}`;
+
+                      // Check both the processed responses ref and the state
+                      const alreadyProcessedInRef = processedResponsesRef.current.has(responseId);
+                      const alreadyProcessedInState = policeResponses.some(pr =>
+                        pr.policeId === alert.policeId && pr.respondedAt === alert.respondedAt
+                      );
+
+                      if (!alreadyProcessedInRef && !alreadyProcessedInState) {
+                        handlePoliceResponse(alert);
+                      } else {
+                        console.log(`⏭️ Response ${responseId} already processed, skipping...`);
+                      }
+                    });
+                  }
+                } catch (error) {
+                  // Handle network errors gracefully
+                  if (error.message?.includes('Network request failed')) {
+                    Alert.alert(
+                      '⚠️ Service Unavailable',
+                      'Backend service is not available. Please ensure the server is running.',
+                      [{ text: 'OK' }]
+                    );
+                  } else {
+                    console.warn('⚠️ Error checking responses:', error.message);
+                    Alert.alert('⚠️ Error', error.message || 'Failed to check responses');
+                  }
+                }
+              }}
+            >
+              <Text style={styles.checkResponseButtonText}>🔍 Check for Responses Now</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Test Police Alert Button - For Testing */}
+          {role === 'ambulance' && (
+            <TouchableOpacity
+              style={[styles.testAlertButton, { backgroundColor: '#9B59B6' }]}
+              onPress={() => {
+                console.log('🧪 TEST MODE: Setting up test scenario...');
+
+                // Check if route exists
+                if (routeCoordinates.length === 0) {
+                  console.log('⚠️ No route exists. Creating test route...');
+
+                  // Create a test route from Vizianagaram to Visakhapatnam
+                  const testStart = { latitude: 18.1167, longitude: 83.4167 }; // Vizianagaram
+                  const testEnd = { latitude: 17.6868, longitude: 83.2185 }; // Visakhapatnam
+
+                  // Create simple route coordinates (straight line for testing)
+                  const testRouteCoords = [];
+                  const steps = 20;
+                  for (let i = 0; i <= steps; i++) {
+                    testRouteCoords.push({
+                      latitude: testStart.latitude + (testEnd.latitude - testStart.latitude) * (i / steps),
+                      longitude: testStart.longitude + (testEnd.longitude - testStart.longitude) * (i / steps)
+                    });
+                  }
+
+                  setStartLocation(testStart);
+                  setEndLocation(testEnd);
+                  setStartAddress('Vizianagaram, Andhra Pradesh');
+                  setEndAddress('Visakhapatnam, Andhra Pradesh');
+                  setRouteCoordinates(testRouteCoords);
+                  setIsRouteActive(true);
+                  setRouteStartTime(new Date());
+                  setDistance('45.2');
+                  setDuration('55');
+
+                  console.log('✅ Test route created:', {
+                    start: 'Vizianagaram',
+                    end: 'Visakhapatnam',
+                    points: testRouteCoords.length
+                  });
+                }
+
+                // Use test location near Vizianagaram Central Junction
+                const testLocation = {
+                  latitude: 18.1167,
+                  longitude: 83.4167
+                };
+
+                console.log('🧪 TEST MODE: Triggering police alert check...');
+                checkNearbyPolice(testLocation);
+
+                Alert.alert(
+                  '🧪 Test Alert with Route',
+                  `${routeCoordinates.length > 0 ? '✅ Route exists!' : '✅ Test route created!'}\n\n` +
+                  `Route: ${startAddress || 'Vizianagaram'} → ${endAddress || 'Visakhapatnam'}\n` +
+                  `Points: ${routeCoordinates.length || 20}\n\n` +
+                  `Police alerts triggered.`,
+                  [{ text: 'OK' }]
+                );
+              }}
+            >
+              <Text style={styles.testAlertButtonText}>🧪 Test Route</Text>
+            </TouchableOpacity>
+          )}
 
         </ScrollView>
       </Animated.View>
@@ -4077,14 +4205,16 @@ const MapScreen = ({ route, navigation }) => {
               </Text>
 
               <TouchableOpacity
-                style={[styles.calculateButton, { backgroundColor: roleColor, opacity: isCreatingRoute ? 0.6 : 1 }]}
+                style={[styles.calculateButton, { backgroundColor: roleColor, opacity: (isCreatingRoute || isSendingAlert) ? 0.6 : 1 }]}
                 onPress={handleCreateRoute}
-                disabled={isCreatingRoute}
+                disabled={isCreatingRoute || isSendingAlert}
               >
-                {isCreatingRoute ? (
+                {isCreatingRoute || isSendingAlert ? (
                   <View style={styles.buttonLoadingContainer}>
                     <ActivityIndicator size="small" color="#FFFFFF" style={styles.buttonSpinner} />
-                    <Text style={styles.calculateButtonText}>Calculating Route...</Text>
+                    <Text style={styles.calculateButtonText}>
+                      {isSendingAlert ? 'Syncing with Police...' : 'Calculating Route...'}
+                    </Text>
                   </View>
                 ) : (
                   <Text style={styles.calculateButtonText}>Calculate Route</Text>
@@ -4260,14 +4390,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
-    maxHeight: height * 0.6, // Increased from 0.5 to 0.6 for better visibility
+    maxHeight: height * 0.8, // Increased from 0.6 to 0.8 (80% of screen) to show more content
   },
   bottomPanelScrollView: {
     flex: 1,
   },
   bottomPanelContent: {
     padding: isTablet ? spacing.xl : spacing.md,
-    paddingBottom: spacing.xl * 1.5, // Extra padding at bottom for better scrolling
+    paddingBottom: 150, // Significantly increased padding to ensure last item is visible above bottom navigation/bezel
+    flexGrow: 1,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -4624,7 +4755,8 @@ const styles = StyleSheet.create({
     ...shadows.md,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    maxHeight: height * 0.25, // Limit height to 25% of screen
+    borderColor: '#E5E7EB',
+    // maxHeight removed to allow full content display
   },
   alertSectionHeader: {
     flexDirection: 'row',
@@ -4651,10 +4783,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   policeAlertCard: {
-    padding: isTablet ? spacing.md : spacing.sm,
+    padding: spacing.md,
     borderRadius: borderRadius.md,
-    ...shadows.sm,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
     width: '100%',
+    marginBottom: 8,
+    borderLeftWidth: 6, // Colored strip on the left
+    borderWidth: 1,
+    borderTopColor: '#EEE',
+    borderRightColor: '#EEE',
+    borderBottomColor: '#EEE',
   },
   alertCardContent: {
     flexDirection: 'row',
@@ -4670,7 +4813,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   alertsList: {
-    maxHeight: height * 0.2,
+    maxHeight: height * 0.25, // reduced height limit for scrolling
   },
   alertsListContent: {
     paddingVertical: spacing.xs,
@@ -4681,19 +4824,17 @@ const styles = StyleSheet.create({
   policeAlertName: {
     fontSize: isTablet ? 15 : isSmallDevice ? 13 : 14,
     fontWeight: 'bold',
-    color: 'white',
+    color: '#2C3E50', // Dark text
     marginBottom: 4,
   },
   policeAlertStatus: {
-    fontSize: isTablet ? 12 : isSmallDevice ? 10 : 11,
-    color: 'white',
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: isTablet ? 11 : isSmallDevice ? 9 : 10,
+    fontWeight: '700',
+    // color handled dynamically
   },
   policeAlertTime: {
     fontSize: isTablet ? 11 : isSmallDevice ? 9 : 10,
-    color: 'white',
-    opacity: 0.9,
+    color: '#95A5A6', // Gray text
   },
   routeStatusContainer: {
     backgroundColor: '#FFFFFF',
@@ -4814,18 +4955,22 @@ const styles = StyleSheet.create({
   },
   ambulanceStatLabel: {
     fontSize: isSmallDevice ? 10 : 11,
-    color: colors.textSecondary,
+    color: '#7F8C8D', // colors.textSecondary
     fontWeight: '600',
   },
   policeResponsesSection: {
-    backgroundColor: '#E8F8F5',
+    backgroundColor: '#FFFFFF',
     padding: isTablet ? spacing.md : spacing.sm,
     borderRadius: borderRadius.lg,
-    marginBottom: spacing.sm,
-    ...shadows.md,
-    borderLeftWidth: 5,
-    borderLeftColor: '#27AE60',
-    maxHeight: height * 0.3, // Limit height to 30% of screen
+    marginBottom: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+    // maxHeight removed to allow full content display
   },
   policeResponsesTitle: {
     fontSize: 15,
@@ -4834,10 +4979,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   policeResponseCard: {
-    padding: isTablet ? spacing.md : spacing.sm,
+    padding: spacing.md,
     borderRadius: borderRadius.md,
-    ...shadows.sm,
+    backgroundColor: '#FFFFFF', // Modern White card
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
     width: '100%',
+    marginBottom: 8,
+    borderLeftWidth: 6, // Colored strip on left
+    borderWidth: 1,
+    borderTopColor: '#f0f0f0',
+    borderRightColor: '#f0f0f0',
+    borderBottomColor: '#f0f0f0',
   },
   responseCardHeader: {
     flexDirection: 'row',
@@ -4858,7 +5014,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.3)',
   },
   responsesList: {
-    maxHeight: height * 0.25,
+    // maxHeight removed
   },
   responsesListContent: {
     paddingVertical: spacing.xs,
@@ -4872,32 +5028,30 @@ const styles = StyleSheet.create({
   },
   policeResponseName: {
     fontSize: isTablet ? 16 : isSmallDevice ? 14 : 15,
+    color: '#34495E', // Dark text
     fontWeight: 'bold',
-    color: 'white',
     marginBottom: 4,
   },
   policeResponseStatus: {
-    fontSize: isTablet ? 13 : isSmallDevice ? 11 : 12,
-    color: 'white',
-    fontWeight: '600',
+    fontSize: isTablet ? 12 : isSmallDevice ? 10 : 11,
+    fontWeight: '700',
+    // color handled dynamically
   },
   policeResponseOfficer: {
     fontSize: isTablet ? 12 : isSmallDevice ? 10 : 11,
-    color: 'white',
-    opacity: 0.95,
+    color: '#7F8C8D', // Gray text
     flex: 1,
   },
   policeResponseMessage: {
     fontSize: isTablet ? 13 : isSmallDevice ? 11 : 12,
-    color: 'rgba(255, 255, 255, 0.95)',
+    color: '#555', // Dark gray text
     marginBottom: spacing.xs,
     fontStyle: 'italic',
     lineHeight: isTablet ? 18 : isSmallDevice ? 14 : 16,
   },
   policeResponseTime: {
     fontSize: isTablet ? 11 : isSmallDevice ? 9 : 10,
-    color: 'white',
-    opacity: 0.9,
+    color: '#BDC3C7', // Light gray text
   },
   trafficLightMarker: {
     width: isTablet ? 85 : isSmallDevice ? 60 : 70,
@@ -5039,9 +5193,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  ambulanceTestText:{
+  ambulanceTestText: {
     fontSize: 20,
-    
+
   },
   trafficLightTestMarker: {
     width: 100,
@@ -5146,7 +5300,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E74C3C',
     zIndex: 4,
   },
-  
+
   ambulanceBody: {
     width: 200,
     height: 70,
